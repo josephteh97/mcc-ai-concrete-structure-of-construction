@@ -4,13 +4,12 @@ import sys
 
 def download_dataset(api_key: str):
     """
-    Download the 'columns-fncne' dataset from Roboflow Universe.
+    Download the 'columns-fncne' dataset from Roboflow.
     
     Args:
         api_key (str): Your private Roboflow API Key.
     """
     rf = Roboflow(api_key=api_key)
-    # Based on the URL: https://universe.roboflow.com/columns-and-ducts/columns-fncne
     # Workspace: columns-and-ducts
     # Project: columns-fncne
     
@@ -18,9 +17,13 @@ def download_dataset(api_key: str):
     project = rf.workspace("columns-and-ducts").project("columns-fncne")
     
     print("Downloading dataset (yolov11 format)...")
-    # We download version 1 (or latest) in yolov11 format
-    # YOLOv8 format is compatible with YOLOv11 in Ultralytics
-    dataset = project.version(1).download("yolov8") 
+    # Download version 1 in YOLOv11 format
+    # Note: If 'yolov11' is not yet supported by the SDK, 'yolov8' is fully compatible.
+    try:
+        dataset = project.version(1).download("yolov11")
+    except Exception:
+        print("Format 'yolov11' might not be available, falling back to 'yolov8'...")
+        dataset = project.version(1).download("yolov8")
     
     print(f"Dataset downloaded to: {dataset.location}")
     return dataset.location
