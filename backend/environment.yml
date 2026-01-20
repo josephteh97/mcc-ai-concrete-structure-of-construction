@@ -9,7 +9,6 @@ dependencies:
   - open3d
   - pytorch
   - torchvision
-  - opencv
   - pip:
     - fastapi
     - uvicorn
