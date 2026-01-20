@@ -1,0 +1,19 @@
+fastapi==0.109.0
+uvicorn==0.27.0
+python-multipart==0.0.6
+ultralytics==8.1.0
+opencv-python-headless==4.9.0.80
+paddlepaddle==2.6.0
+paddleocr==2.7.0.3
+# ifcopenshell is best installed via conda, but we list it here for completeness or pip fallback
+# ifcopenshell
+open3d==0.18.0
+transformers==4.37.0
+torch>=2.0.0
+torchvision>=0.15.0
+pydantic==2.6.0
+python-dotenv==1.0.1
+shapely==2.0.2
+numpy>=1.24.0
+requests==2.31.0
+roboflow==1.1.19

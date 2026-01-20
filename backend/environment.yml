@@ -1,0 +1,24 @@
+name: mcc-ai-construction
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - ifcopenshell
+  - open3d
+  - pytorch
+  - torchvision
+  - cpuonly  # Remove this if using GPU
+  - opencv
+  - pip:
+    - fastapi
+    - uvicorn
+    - python-multipart
+    - ultralytics
+    - paddlepaddle
+    - paddleocr
+    - transformers
+    - python-dotenv
+    - shapely
+    - roboflow
