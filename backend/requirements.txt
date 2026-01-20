@@ -7,7 +7,7 @@ paddlepaddle==3.3.0
 paddleocr==2.7.0.3
 # ifcopenshell is best installed via conda, but we list it here for completeness or pip fallback
 # ifcopenshell
-open3d==0.18.0
+# open3d==0.18.0
 transformers==4.37.0
 torch>=2.0.0
 torchvision>=0.15.0
