@@ -1,10 +1,13 @@
 fastapi==0.109.0
 uvicorn==0.27.0
 python-multipart==0.0.6
-ultralytics>=8.4.6
+ultralytics==8.4.6
 opencv-python-headless==4.10.0.84
 paddlepaddle==3.3.0
 paddleocr==2.7.0.3
+onnx==1.20.1
+onnxslim==0.1.82
+onnxruntime-gpu==1.23.2
 # ifcopenshell   use conda to install ifcopenshell  0.8.4
 # conda install -c conda-forge ifcopenshell
 numpy==1.26.4
