@@ -2,6 +2,15 @@ from ultralytics import YOLO
 import os
 import sys
 import glob
+import torch
+
+# Workaround for PyTorch 2.6+ security change
+# We need to whitelist Ultralytics classes or disable weights_only check since we trust the official model.
+try:
+    from ultralytics.nn.tasks import DetectionModel
+    torch.serialization.add_safe_globals([DetectionModel])
+except ImportError:
+    pass
 
 def run_training_pipeline(dataset_location: str, epochs: int = 50, imgsz: int = 640):
     """
