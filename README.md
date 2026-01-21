@@ -58,7 +58,7 @@ python backend/training/download_data.py [YOUR_roboflow_API_KEY]
 
 ```bash
 cd backend/training
-python train_yolo.py
+python train_yolo.py [Path_to_dataset]
 ```
 
 4. The best model will be saved. Update `backend/processing_unit/object_detection.py` to point to your new `.pt` file.
