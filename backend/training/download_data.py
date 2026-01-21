@@ -14,10 +14,10 @@ def download_dataset(api_key: str):
     """
     rf = Roboflow(api_key=api_key)
     # Workspace: columns-and-ducts
-    # Project: columns-fncne
+    # Project: columns-and-ducts-detection (Updated based on user link)
     
     print("Accessing Roboflow Workspace...")
-    project = rf.workspace("columns-and-ducts").project("columns-fncne")
+    project = rf.workspace("columns-and-ducts").project("columns-and-ducts-detection")
     
     print("Downloading dataset...")
     
@@ -32,7 +32,15 @@ def download_dataset(api_key: str):
             try:
                 print("Requesting 'yolov11' format...")
                 dataset = project.version(1).download("yolov11")
-                print(f"Dataset downloaded to: {dataset.location}")
+                
+                # Check if download was successful (folder not empty)
+                if not os.path.exists(dataset.location) or not os.listdir(dataset.location):
+                    print(f"Warning: Downloaded folder '{dataset.location}' is empty or does not exist.")
+                else:
+                    print(f"Dataset downloaded to: {dataset.location}")
+                    file_count = sum([len(files) for r, d, files in os.walk(dataset.location)])
+                    print(f"Total files found: {file_count}")
+                    
                 return dataset.location
             except Exception as e:
                 # If it's a connection error, re-raise to outer loop
@@ -44,7 +52,15 @@ def download_dataset(api_key: str):
                 # Otherwise, assume format issue and try yolov8
                 print(f"Format 'yolov11' issue ({e}), falling back to 'yolov8'...")
                 dataset = project.version(1).download("yolov8")
-                print(f"Dataset downloaded to: {dataset.location}")
+                
+                # Check if download was successful (folder not empty)
+                if not os.listdir(dataset.location):
+                    print(f"Warning: Downloaded folder '{dataset.location}' is empty.")
+                else:
+                    print(f"Dataset downloaded to: {dataset.location}")
+                    file_count = sum([len(files) for r, d, files in os.walk(dataset.location)])
+                    print(f"Total files found: {file_count}")
+                
                 return dataset.location
 
         except (ConnectionError, URLError, OSError, Exception) as e:
