@@ -10,4 +10,4 @@ paddleocr==2.7.0.3
 numpy==1.26.4
 requests==2.31.0
 roboflow==1.2.12
-# python==3.10.19 / 3.10.12
+# python==3.10.12
