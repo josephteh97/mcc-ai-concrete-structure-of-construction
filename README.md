@@ -49,7 +49,12 @@ Before running the system, you must train the YOLO model to recognize structural
 
 1. Prepare your dataset (images and labels) in YOLO format.
 2. Configure `dataset.yaml`.
-3. Run the training script:
+3. download dataset
+
+```bash
+python backend/training/download_data.py [YOUR_roboflow_API_KEY]
+```
+4. Run the training script:
 
 ```bash
 cd backend/training
