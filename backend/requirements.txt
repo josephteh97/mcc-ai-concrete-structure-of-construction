@@ -5,6 +5,7 @@ ultralytics==8.4.6
 opencv-python-headless==4.10.0.84
 paddlepaddle==3.3.0
 paddleocr==2.7.0.3
+# The following 3 packages used for exporting to ONNX format after YOLO model training
 onnx==1.20.1
 onnxslim==0.1.82
 onnxruntime-gpu==1.23.2
