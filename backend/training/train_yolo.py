@@ -4,37 +4,22 @@ import sys
 import glob
 import torch
 import torch.nn as nn
+from functools import partial
 
 # Workaround for PyTorch 2.6+ security change
-# We need to whitelist Ultralytics classes or disable weights_only check since we trust the official model.
-try:
-    from ultralytics.nn.tasks import DetectionModel
-    from ultralytics.nn.modules.conv import Conv, Concat
-    from ultralytics.nn.modules.block import C3k2, C2PSA, C3k, PSABlock, Bottleneck
-    from ultralytics.nn.modules.head import Detect
-    
-    # Add all necessary globals
-    torch.serialization.add_safe_globals([
-        DetectionModel, 
-        nn.Sequential,
-        nn.Conv2d,
-        nn.BatchNorm2d,
-        nn.SiLU,
-        nn.Upsample,
-        nn.ModuleList,
-        Conv,
-        Concat,
-        C3k2,
-        C2PSA,
-        C3k,
-        PSABlock,
-        Bottleneck,
-        Detect
-    ])
-except ImportError:
-    pass
-except Exception as e:
-    print(f"Warning: Failed to add safe globals: {e}")
+# Whitelisting is failing recursively or context is not propagating to ultralytics internal calls.
+# We will monkeypatch torch.load to force weights_only=False globally for this script.
+# Use this only because we trust the model source (official Ultralytics/local).
+
+_original_torch_load = torch.load
+
+def safe_torch_load(*args, **kwargs):
+    # Force weights_only=False to bypass the security check completely
+    if 'weights_only' not in kwargs:
+        kwargs['weights_only'] = False
+    return _original_torch_load(*args, **kwargs)
+
+torch.load = safe_torch_load
 
 def run_training_pipeline(dataset_location: str, epochs: int = 50, imgsz: int = 640):
     """
