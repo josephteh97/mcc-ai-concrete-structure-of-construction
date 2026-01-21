@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 9
+names: ['Column', 'Door', 'Double-Door', 'Garage Door', 'Opening', 'Sliding Door', 'Staircase', 'Ventilator', 'Window']
+
+roboflow:
+  workspace: columns-and-ducts
+  project: columns-and-ducts-detection
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/columns-and-ducts/columns-and-ducts-detection/dataset/1
