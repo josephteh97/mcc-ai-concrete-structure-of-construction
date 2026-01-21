@@ -11,7 +11,7 @@ def run_training_pipeline(dataset_location: str, epochs: int = 50, imgsz: int = 
     
     # 1. Initialize Model
     # Using YOLOv11 Nano model for speed, change to 'yolo11s.pt' or 'yolo11m.pt' for better accuracy
-    model = YOLO("yolo11n.pt")
+    model = YOLO("./backend/training/yolo11s.pt")
     
     # The dataset location from Roboflow usually contains a data.yaml file
     data_yaml = os.path.join(dataset_location, "data.yaml")
