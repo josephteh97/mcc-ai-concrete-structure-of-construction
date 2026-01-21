@@ -78,7 +78,8 @@ def run_training_pipeline(dataset_location: str, epochs: int = 50, imgsz: int = 
 
     # 5. Export
     print("\n=== STEP 4: EXPORT ===")
-    export_path = model.export(format="onnx")
+    # Fix for ONNX opset version warning (set to 12 or 17 which are stable)
+    export_path = model.export(format="onnx", opset=12)
     print(f"Model exported to: {export_path}")
 
 if __name__ == "__main__":
