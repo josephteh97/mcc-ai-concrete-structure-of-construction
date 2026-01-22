@@ -35,3 +35,20 @@ pip install -r requirements.txt
 # Start the FastAPI server
 python main.py
 ```
+
+##### for agentic programming
+```bash
+# Install Git LFS first if you haven't
+git lfs install
+
+# Clone the model to a local folder named 'qwen-vl-model'
+# Note: This is a large download (~5GB+)
+# We recommend creating a 'models' directory at the project root
+mkdir -p ../models
+cd ../models
+git clone https://huggingface.co/Qwen/Qwen2-VL-2B-Instruct
+
+# The backend code is configured to look for the model at:
+# ../models/Qwen2-VL-2B-Instruct
+# You can override this by setting the QWEN_MODEL_PATH environment variable.
+```
