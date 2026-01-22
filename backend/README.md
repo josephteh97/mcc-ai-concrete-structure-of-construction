@@ -46,9 +46,11 @@ git lfs install
 # We recommend creating a 'models' directory at the project root
 mkdir -p ../models
 cd ../models
-git clone https://huggingface.co/Qwen/Qwen2-VL-2B-Instruct
+# For different model sizes, replace with the specific model name:
+# git clone https://huggingface.co/Qwen/Qwen3-VL-2B
+git clone https://huggingface.co/Qwen/Qwen3-VL-8B
 
 # The backend code is configured to look for the model at:
-# ../models/Qwen2-VL-2B-Instruct
+# ../models/Qwen3-VL-2B
 # You can override this by setting the QWEN_MODEL_PATH environment variable.
 ```
