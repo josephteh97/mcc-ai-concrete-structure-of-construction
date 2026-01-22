@@ -116,7 +116,19 @@ Use the updated train_yolo.py, which now includes a full pipeline
 ```
 python train_yolo.py
 ```
-
+step 3 Test the frontend (user interface)
+vite installation
+```bash
+npm install
+```
+start development server
+```bash
+npm run dev
+```
+real deployment (for actual deployment only)
+```bash
+npm run build
+```
 
 ## License
 MCC Engineering
