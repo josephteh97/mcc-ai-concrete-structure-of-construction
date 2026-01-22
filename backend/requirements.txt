@@ -15,7 +15,7 @@ numpy==1.26.4
 requests==2.31.0
 roboflow==1.2.12
 lark
-# Qwen-VL Dependencies
+# Qwen3-VL Dependencies
 transformers>=4.37.0
 accelerate
 qwen-vl-utils
