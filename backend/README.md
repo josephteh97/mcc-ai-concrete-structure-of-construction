@@ -36,21 +36,25 @@ pip install -r requirements.txt
 python main.py
 ```
 
-##### for agentic programming
+##### For Agentic Programming (Vision-Language Model)
 ```bash
 # Install Git LFS first if you haven't
 git lfs install
 
-# Clone the model to a local folder named 'qwen-vl-model'
-# Note: This is a large download (~5GB+)
-# We recommend creating a 'models' directory at the project root
+# Create a 'models' directory at the project root
 mkdir -p ../models
 cd ../models
-# For different model sizes, replace with the specific model name:
-# git clone https://huggingface.co/Qwen/Qwen3-VL-2B
-git clone https://huggingface.co/Qwen/Qwen3-VL-8B
 
-# The backend code is configured to look for the model at:
-# ../models/Qwen3-VL-2B
+# Clone Qwen2.5-VL (Latest Available Version)
+# Choose the size that fits your hardware:
+
+# Option 1: 3B Model (Recommended for Consumer GPUs - 6GB+ VRAM)
+git clone https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct
+
+# Option 2: 7B Model (Recommended for Better Reasoning - 16GB+ VRAM)
+git clone https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
+
+# The backend code is configured to look for the 3B model by default at:
+# ../models/Qwen2.5-VL-3B-Instruct
 # You can override this by setting the QWEN_MODEL_PATH environment variable.
 ```

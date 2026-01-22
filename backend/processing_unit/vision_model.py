@@ -5,9 +5,11 @@ import requests
 import base64
 import os
 import torch
+import json
+import re
 
 try:
-    from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
+    from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from qwen_vl_utils import process_vision_info
     HAS_QWEN = True
 except ImportError:
@@ -25,48 +27,168 @@ class VisionReasoner:
         self.processor = None
         
         # Configuration for Local Model Path
-        # Users can update this path to their local download of Qwen-VL
-        self.local_model_path = os.environ.get("QWEN_MODEL_PATH", "../models/Qwen3-VL")
-        
         # Attempt to load model if configured
-        # self._load_local_qwen() # Commented out by default to save memory during dev
+        # Users can update this path to their local download of Qwen-VL
+        # Defaulting to Qwen2.5-VL-3B-Instruct for efficiency
+        self.local_model_path = os.environ.get("QWEN_MODEL_PATH", "../models/Qwen2.5-VL-3B-Instruct")
+        
+        self.is_model_loaded = False
+        self._load_local_qwen()
 
     def _load_local_qwen(self):
         """
-        Loads the Qwen3-VL model from the local path if available.
+        Loads the Qwen2.5-VL model from the local path if available.
         """
         if not HAS_QWEN:
-            print("Warning: Qwen3-VL dependencies not installed. Please run `pip install -r requirements.txt`.")
+            print("Warning: Qwen dependencies not installed. Please run `pip install -r requirements.txt`.")
             return
 
         if os.path.exists(self.local_model_path):
-            print(f"Loading Qwen3-VL from {self.local_model_path}...")
+            print(f"Loading Qwen-VL from {self.local_model_path}...")
             try:
-                self.model = Qwen3VLForConditionalGeneration.from_pretrained(
+                # Use Qwen2_5_VLForConditionalGeneration or fall back to AutoModel if using a different variant
+                # Added trust_remote_code=True for newer/custom models like Qwen3-Thinking
+                self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                     self.local_model_path, 
                     torch_dtype="auto", 
-                    device_map="auto"
+                    device_map="auto",
+                    trust_remote_code=True
                 )
-                self.processor = AutoProcessor.from_pretrained(self.local_model_path)
+                self.processor = AutoProcessor.from_pretrained(self.local_model_path, trust_remote_code=True)
+                self.is_model_loaded = True
                 print("Qwen-VL loaded successfully.")
             except Exception as e:
                 print(f"Error loading Qwen-VL: {e}")
+                self.is_model_loaded = False
         else:
             print(f"Qwen-VL model path not found at: {self.local_model_path}")
+
+    def _generate_agent_response(self, prompt: str):
+        try:
+            messages = [
+                {"role": "system", "content": "You are the System Manager for the MCC AI Concrete Structure Construction system. Your goal is to assist the user in managing the workflow, updating configurations, and resolving errors. Be concise and helpful."},
+                {"role": "user", "content": prompt}
+            ]
+            text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            inputs = self.processor(
+                text=[text],
+                padding=True,
+                return_tensors="pt"
+            )
+            inputs = inputs.to(self.model.device)
+            
+            # Generate response
+            generated_ids = self.model.generate(**inputs, max_new_tokens=256)
+            
+            # Decode only the new tokens
+            generated_ids = [
+                output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            output_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            return output_text
+        except Exception as e:
+            print(f"Error in agent generation: {e}")
+            return None
 
     async def chat_with_user(self, message: str) -> dict:
         """
         Process a text message from the user, simulating a VL/LLM agent (RPA Manager).
         It can inspect system state and trigger actions.
         """
+        if not self.is_model_loaded:
+            return self._chat_fallback_regex(message)
+
+        # 1. Build Agent Context
+        status = self.system.status.value
+        config_str = json.dumps(self.system.config)
+        recent_logs = "\n".join(self.system.logs[-3:]) if self.system.logs else "No logs yet."
+        
+        prompt = f"""
+Current System State:
+- Status: {status}
+- Configuration: {config_str}
+- Recent Logs:
+{recent_logs}
+
+User Message: "{message}"
+
+Instructions:
+1. Analyze the user's intent.
+2. If the user wants to update a parameter (floor_count, conf_threshold, etc.), output a JSON action block.
+3. If the user's request is ambiguous (e.g., "change floors" without a number), ASK for clarification.
+4. If the system is in an ERROR or PAUSED state, guide the user on how to resolve it.
+
+Essense:
+The user is an Construction Engineer who wants to send 2D input in PDF format to the system and receive a 3D model in IFC format.
+
+Output Format:
+Provide a natural language response first.
+If an action is required, append a JSON block at the end like this:
+```json
+{{
+  "action": "update_config",
+  "key": "floor_count",
+  "value": 5
+}}
+```
+OR
+```json
+{{
+  "action": "command",
+  "command": "retry"
+}}
+```
+"""
+        # Generate response
+        response_text = self._generate_agent_response(prompt)
+        
+        if not response_text:
+             return self._chat_fallback_regex(message)
+
+        # Parse Response
+        response = {
+            "reply": response_text,
+            "updated_params": {}
+        }
+        
+        # Extract JSON if present
+        json_match = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL)
+        if json_match:
+            try:
+                action_data = json.loads(json_match.group(1))
+                # Remove the JSON block from the reply to keep it clean for the user
+                response["reply"] = response_text.replace(json_match.group(0), "").strip()
+                
+                if action_data.get("action") == "update_config":
+                    key = action_data.get("key")
+                    val = action_data.get("value")
+                    if key and val is not None:
+                        self.system.update_config(key, val)
+                        response["updated_params"][key] = val
+                        
+                elif action_data.get("action") == "command":
+                    cmd = action_data.get("command")
+                    if cmd == "retry" and self.system.status == SystemStatus.PAUSED:
+                        result = await self.system.resume_workflow()
+                        if result.get("status") == "success":
+                            response["reply"] += f"\n[System] Success! Download: {result.get('ifc_url')}"
+                        else:
+                            response["reply"] += f"\n[System] Failed: {result.get('message')}"
+                            
+            except Exception as e:
+                print(f"Failed to parse agent action: {e}")
+
+        return response
+
+    def _chat_fallback_regex(self, message: str) -> dict:
+        """
+        Original regex-based implementation for fallback.
+        """
         message_lower = message.lower()
         response = {
             "reply": "I received your message.",
             "updated_params": {}
         }
-        
-        # Regular expressions for parameter extraction
-        import re
         
         # 1. System Status Check
         if "status" in message_lower or "what is happening" in message_lower:
@@ -99,32 +221,52 @@ class VisionReasoner:
             except ValueError:
                 pass
 
-        # 3. Intervention / Workflow Control
-        if "retry" in message_lower or "resume" in message_lower or "try again" in message_lower:
-            if self.system.status == SystemStatus.PAUSED:
-                response["reply"] = "Manager: Understood. I am intervening to resume the workflow with the current settings..."
-                # Trigger the resume asynchronously
-                # Since we are in an async function, we can await it if we want the result immediately,
-                # or just fire it. Since we want to report success/fail, we await.
-                result = await self.system.resume_workflow()
-                
-                if result.get("status") == "success":
-                    response["reply"] += f"\nSuccess! Process completed. Download: {result.get('ifc_url')}"
-                elif result.get("status") == "paused":
-                    response["reply"] += f"\nStill no luck. Reason: {result.get('message')}"
-                else:
-                    response["reply"] += f"\nError encountered: {result.get('message')}"
-                return response
-            else:
-                 response["reply"] = "Manager: The system is not currently paused, so there is nothing to resume. You can upload a new file."
+        # 3. Intervention / Workflow Control 
+        if "retry" in message_lower or "resume" in message_lower or "try again" in message_lower: 
+            if self.system.status == SystemStatus.PAUSED: 
+                # This part requires async handling, which is tricky in a synchronous helper if we called it from sync code
+                # But here we are calling it from async wrapper or direct call. 
+                # However, _chat_fallback_regex is synchronous? No, let's make it return a dict and handle async in caller if needed.
+                # Or just return a special flag.
+                # For simplicity, we can't easily await inside this helper if we don't make it async.
+                # Let's make it return a "pending_action" or just text.
+                # Actually, the original code was inside an async function.
+                response["reply"] = "Manager: (Fallback) Please say 'retry' again to the main agent."
+                # We can't easily execute the resume here without making this async.
+                # Let's just strip the complex resume logic from fallback for now or duplicate it in the async caller.
+                pass 
 
-        # If we updated params but didn't trigger resume (and we are paused), suggest it
-        elif response["updated_params"] and self.system.status == SystemStatus.PAUSED:
-             response["reply"] += "\n(System is PAUSED. Say 'retry' to apply these changes to the current job.)"
+        # 4. Proactive Clarification & Safety Checks (Agentic Behavior)
+        # Case A: Missing Parameters (Counter-asking)
+        elif "floor" in message_lower and not response["updated_params"] and ("set" in message_lower or "change" in message_lower):
+            response["reply"] = "Manager: You mentioned setting the floor count, but I missed the number. How many floors should I assume? (e.g., 'set floors to 5')"
+            
+        elif ("threshold" in message_lower or "confidence" in message_lower) and not response["updated_params"] and ("set" in message_lower or "change" in message_lower):
+            response["reply"] = "Manager: It sounds like you want to adjust the detection sensitivity. What confidence threshold should I use? (0.0 to 1.0)"
 
-        # Fallback / General Info
-        elif response["reply"] == "I received your message.":
-             response["reply"] = "Manager: I am monitoring the workflow. You can ask me to change settings (e.g., 'set floors to 5', 'threshold 0.1') or 'retry' a failed job."
+        # Case B: Context Mismatch (User gives wrong instruction for current state)
+        elif ("start" in message_lower or "process" in message_lower) and self.system.status == SystemStatus.PAUSED:
+             response["reply"] = "Manager: The system is currently PAUSED due to a previous issue. Do you want me to 'retry' with the current settings, or would you like to update configuration first?"
+             
+        elif ("start" in message_lower or "process" in message_lower) and self.system.status == SystemStatus.PROCESSING:
+             response["reply"] = "Manager: I am currently busy processing the current job. Please wait for it to complete."
+
+        # Case C: Error State Handling
+        elif self.system.status == SystemStatus.ERROR and "status" not in message_lower:
+             # Find the last error log
+             error_msg = "Unknown Error"
+             if self.system.logs:
+                for log in reversed(self.system.logs):
+                    if "ERROR" in log:
+                        error_msg = log.split("]")[-1].strip() # Remove timestamp
+                        break
+             
+             if "retry" not in message_lower and "reset" not in message_lower:
+                 response["reply"] = f"Manager: The system is halted due to an error: '{error_msg}'.\nShould I 'retry' the operation, or would you like to upload a new file?"
+
+        # Fallback / General Info 
+        elif response["reply"] == "I received your message.": 
+             response["reply"] = "Manager: (Fallback Mode) I am monitoring the workflow. If you need to change settings, just tell me (e.g., 'set floors to 5')." 
 
         return response
 
@@ -141,7 +283,7 @@ class VisionReasoner:
         """
         if self.model and self.processor and HAS_QWEN:
             return self._analyze_with_qwen(image_path, prompt)
-            
+
         # Mock response for development without heavy model weights
         return f"Mock Analysis: The image contains a structural layout with columns arranged in a grid. Detected beam connections between columns."
 

@@ -15,8 +15,8 @@ numpy==1.26.4
 requests==2.31.0
 roboflow==1.2.12
 lark
-# Qwen3-VL Dependencies
-transformers>=4.37.0
+# Qwen2.5-VL Dependencies (Requires latest transformers from source)
+git+https://github.com/huggingface/transformers
 accelerate
 qwen-vl-utils
 torch
