@@ -4,6 +4,14 @@
 import requests
 import base64
 import os
+import torch
+
+try:
+    from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
+    from qwen_vl_utils import process_vision_info
+    HAS_QWEN = True
+except ImportError:
+    HAS_QWEN = False
 
 from processing_unit.system_manager import SystemManager, SystemStatus
 
@@ -12,7 +20,39 @@ class VisionReasoner:
         self.model_type = model_type
         # In a real scenario, we would inject the SystemManager instance or get the singleton
         self.system = SystemManager() 
-        pass
+        
+        self.model = None
+        self.processor = None
+        
+        # Configuration for Local Model Path
+        # Users can update this path to their local download of Qwen-VL
+        self.local_model_path = os.environ.get("QWEN_MODEL_PATH", "../models/Qwen3-VL")
+        
+        # Attempt to load model if configured
+        # self._load_local_qwen() # Commented out by default to save memory during dev
+
+    def _load_local_qwen(self):
+        """
+        Loads the Qwen3-VL model from the local path if available.
+        """
+        if not HAS_QWEN:
+            print("Warning: Qwen3-VL dependencies not installed. Please run `pip install -r requirements.txt`.")
+            return
+
+        if os.path.exists(self.local_model_path):
+            print(f"Loading Qwen3-VL from {self.local_model_path}...")
+            try:
+                self.model = Qwen3VLForConditionalGeneration.from_pretrained(
+                    self.local_model_path, 
+                    torch_dtype="auto", 
+                    device_map="auto"
+                )
+                self.processor = AutoProcessor.from_pretrained(self.local_model_path)
+                print("Qwen-VL loaded successfully.")
+            except Exception as e:
+                print(f"Error loading Qwen-VL: {e}")
+        else:
+            print(f"Qwen-VL model path not found at: {self.local_model_path}")
 
     async def chat_with_user(self, message: str) -> dict:
         """
@@ -99,6 +139,9 @@ class VisionReasoner:
         Returns:
             str: The model's textual analysis.
         """
+        if self.model and self.processor and HAS_QWEN:
+            return self._analyze_with_qwen(image_path, prompt)
+            
         # Mock response for development without heavy model weights
         return f"Mock Analysis: The image contains a structural layout with columns arranged in a grid. Detected beam connections between columns."
 
@@ -108,4 +151,34 @@ class VisionReasoner:
     
     def _analyze_with_qwen(self, image_path: str, prompt: str):
         # Implementation for Qwen-VL local inference
-        pass
+        try:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": f"file://{os.path.abspath(image_path)}"},
+                        {"type": "text", "text": prompt}
+                    ]
+                }
+            ]
+            
+            text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            image_inputs, video_inputs = process_vision_info(messages)
+            inputs = self.processor(
+                text=[text],
+                images=image_inputs,
+                padding=True,
+                return_tensors="pt"
+            )
+            # Move inputs to same device as model
+            inputs = inputs.to(self.model.device)
+            
+            generated_ids = self.model.generate(**inputs, max_new_tokens=128)
+            output_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)
+            
+            # The output usually contains the prompt too, we might want to strip it
+            # But for now returning the raw list/string is fine
+            return output_text[0]
+            
+        except Exception as e:
+            return f"Error running Qwen-VL: {str(e)}"
