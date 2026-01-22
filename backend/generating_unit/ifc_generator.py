@@ -30,7 +30,7 @@ class IfcGenerator:
         ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.site, related_object=self.building)
         ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.building, related_object=self.storey)
 
-    def create_column(self, x: float, y: float, width: float, depth: float, height: float):
+    def create_column(self, x: float, y: float, width: float, depth: float, height: float, elevation: float = 0.0):
         """
         Create a rectangular column at (x, y).
         """
@@ -57,7 +57,7 @@ class IfcGenerator:
         matrix = ifcopenshell.api.run("geometry.calculate_matrix", self.model, local_placement=None)
         matrix[0][3] = x
         matrix[1][3] = y
-        # z is 0 relative to storey
+        matrix[2][3] = elevation # Set Z elevation
         
         ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=column, matrix=matrix)
         
