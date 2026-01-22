@@ -1,15 +1,26 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import Viewer3D from './components/Viewer3D';
+import ChatWidget from './components/ChatWidget';
 
 function App() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [ifcUrl, setIfcUrl] = useState(null);
   const [stats, setStats] = useState(null);
+  const [constructionParams, setConstructionParams] = useState({
+    floor_count: 1,
+    scale: 0.05,
+    height: 3.0
+  });
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
+  };
+
+  const handleParamsUpdate = (newParams) => {
+    setConstructionParams(prev => ({ ...prev, ...newParams }));
+    alert(`Parameters updated: ${JSON.stringify(newParams)}`);
   };
 
   const handleUpload = async () => {
@@ -18,8 +29,9 @@ function App() {
     setLoading(true);
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('scale', 0.05); // Default scale
-    formData.append('height', 3.0); // Default height
+    formData.append('scale', constructionParams.scale);
+    formData.append('height', constructionParams.height);
+    formData.append('floor_count', constructionParams.floor_count);
 
     try {
       // Adjust URL to your backend
@@ -45,6 +57,7 @@ function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col md:flex-row">
+      <ChatWidget onParamsUpdate={handleParamsUpdate} />
       {/* Sidebar / Control Panel */}
       <div className="w-full md:w-80 bg-white p-6 shadow-lg z-10 flex flex-col gap-6 overflow-y-auto">
         <h1 className="text-2xl font-bold text-blue-600">MCC AI Construction</h1>
