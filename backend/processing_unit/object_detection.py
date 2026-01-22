@@ -4,7 +4,7 @@ import numpy as np
 from typing import List, Dict, Any
 
 class ObjectDetector:
-    def __init__(self, model_path: str = "yolo11n.pt"):
+    def __init__(self, model_path: str = "yolo26n.pt"):
         """
         Initialize the YOLOv11 detector.
         
