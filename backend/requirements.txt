@@ -14,4 +14,5 @@ onnxruntime-gpu==1.23.2
 numpy==1.26.4
 requests==2.31.0
 roboflow==1.2.12
+lark
 # python==3.10.12
