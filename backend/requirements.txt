@@ -22,4 +22,8 @@ qwen-vl-utils
 torch
 torchvision
 pillow
+# GNN Dependencies for Advanced Reconstruction
+# torch-geometric
+# torch-scatter
+# torch-sparse
 # python==3.10.12

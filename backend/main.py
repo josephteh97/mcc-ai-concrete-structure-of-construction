@@ -44,7 +44,8 @@ async def process_drawing(
     file: UploadFile = File(...),
     scale: float = Form(None), # Optional, defaults to SystemManager config
     height: float = Form(None),  
-    floor_count: int = Form(None) 
+    floor_count: int = Form(None),
+    generation_mode: str = Form(None) # "simple" or "advanced"
 ):
     """
     Process an uploaded PDF/Image and generate a 3D IFC model via SystemManager.
@@ -53,7 +54,8 @@ async def process_drawing(
         file=file,
         scale=scale,
         height=height,
-        floor_count=floor_count
+        floor_count=floor_count,
+        generation_mode=generation_mode
     )
     
     return result

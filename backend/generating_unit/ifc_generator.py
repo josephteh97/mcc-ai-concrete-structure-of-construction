@@ -119,5 +119,70 @@ class IfcGenerator:
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, related_elements=[slab])
         return slab
 
+    def generate_simple_extrusion(self, det_results: dict, scale: float, height: float, floor_count: int):
+        """
+        Mode 1: Simple Rule-Based Extrusion (Baseline).
+        Iterates through detections and extrudes them vertically.
+        """
+        for det in det_results.get('detections', []):
+            cls = det['class']
+            bbox = det['bbox']
+            
+            x1_m = bbox[0] * scale
+            y1_m = bbox[1] * scale
+            x2_m = bbox[2] * scale
+            y2_m = bbox[3] * scale
+            
+            width = x2_m - x1_m
+            depth = y2_m - y1_m
+            cx = x1_m + width / 2
+            cy = - (y1_m + depth / 2)
+            
+            if cls == 'column' or cls == 'person': 
+                for i in range(floor_count):
+                    elevation = i * height
+                    self.create_column(cx, cy, width, depth, height, elevation=elevation)
+
+    def generate_advanced_structure(self, graph_data: dict, scale: float, height: float, floor_count: int):
+        """
+        Mode 2: Advanced GNN-based Reconstruction.
+        Uses graph data (nodes and edges) to generate a connected structure.
+        
+        Args:
+            graph_data (dict): Output from GNN model containing 'nodes' and 'edges'.
+        """
+        # 1. Create Nodes (Columns)
+        node_map = {}
+        for i, node in enumerate(graph_data.get('nodes', [])):
+            cx = node['x'] * scale
+            cy = - node['y'] * scale # Flip Y
+            width = node['width'] * scale
+            depth = node['depth'] * scale
+            
+            for f in range(floor_count):
+                elevation = f * height
+                col = self.create_column(cx, cy, width, depth, height, elevation=elevation)
+                # Store reference to connecting beams if needed (for floor 0)
+                if f == 0:
+                    node_map[i] = (cx, cy)
+
+        # 2. Create Edges (Beams)
+        for edge in graph_data.get('edges', []):
+            source_idx = edge['source']
+            target_idx = edge['target']
+            
+            if source_idx in node_map and target_idx in node_map:
+                p1 = node_map[source_idx]
+                p2 = node_map[target_idx]
+                
+                # Beam dimensions (could be inferred by GNN, defaulting here)
+                beam_width = 0.3
+                beam_depth = 0.5 
+                
+                for f in range(floor_count):
+                    # Beam is usually at the top of the floor height
+                    elevation = (f + 1) * height - beam_depth 
+                    self.create_beam(p1[0], p1[1], p2[0], p2[1], beam_width, beam_depth, elevation=elevation)
+
     def save(self, path: str):
         self.model.write(path)

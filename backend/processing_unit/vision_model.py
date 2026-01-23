@@ -207,6 +207,16 @@ OR
             response["updated_params"]["floor_count"] = count
             response["reply"] = f"Manager: I've updated the plan to {count} floors."
 
+        # Generation Mode (Simple vs Advanced)
+        if "advanced" in message_lower or "gnn" in message_lower or "graph" in message_lower:
+            self.system.update_config("generation_mode", "advanced")
+            response["updated_params"]["generation_mode"] = "advanced"
+            response["reply"] = "Manager: Switched to Advanced Mode (GNN-based Structural Reconstruction)."
+        elif "simple" in message_lower or "rule" in message_lower or "basic" in message_lower:
+            self.system.update_config("generation_mode", "simple")
+            response["updated_params"]["generation_mode"] = "simple"
+            response["reply"] = "Manager: Switched to Simple Mode (Rule-based Extrusion)."
+
         # Confidence Threshold (e.g., "set threshold to 0.1", "conf 0.2")
         conf_match = re.search(r"(?:threshold|conf|confidence)\s*(?:to|is|=)?\s*([0-9]*\.?[0-9]+)", message_lower)
         if conf_match:

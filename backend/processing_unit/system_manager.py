@@ -35,7 +35,8 @@ class SystemManager:
             "scale": 0.05,
             "height": 3.0,
             "floor_count": 1,
-            "conf_threshold": 0.25 # Added confidence threshold
+            "conf_threshold": 0.25, # Added confidence threshold
+            "generation_mode": "simple" # "simple" or "advanced"
         }
         
         # Load Models
@@ -74,8 +75,15 @@ class SystemManager:
             self.last_job_context["job_id"]
         )
 
-    async def process_workflow(self, file, scale=None, height=None, floor_count=None):
+    async def process_workflow(self, file, scale=None, height=None, floor_count=None, generation_mode=None):
         self.status = SystemStatus.PROCESSING
+        
+        # Update config with provided parameters
+        if scale is not None: self.update_config("scale", scale)
+        if height is not None: self.update_config("height", height)
+        if floor_count is not None: self.update_config("floor_count", floor_count)
+        if generation_mode is not None: self.update_config("generation_mode", generation_mode)
+
         job_id = str(uuid.uuid4())
         self.current_job = {"id": job_id, "step": "init"}
         
@@ -121,34 +129,26 @@ class SystemManager:
 
             # Step 3: IFC Gen
             self.current_job["step"] = "ifc_generation"
-            self.log("Generating IFC Model...")
+            self.log(f"Generating IFC Model (Mode: {self.config.get('generation_mode', 'simple')})...")
             ifc_gen = IfcGenerator(project_name=f"Project_{job_id}")
             
             # Use current config
             scale = self.config["scale"]
             height = self.config["height"]
             floor_count = self.config["floor_count"]
-            
-            for det in det_results['detections']:
-                cls = det['class']
-                bbox = det['bbox'] # x1, y1, x2, y2
-                
-                # Convert pixels to meters
-                x1_m = bbox[0] * scale
-                y1_m = bbox[1] * scale
-                x2_m = bbox[2] * scale
-                y2_m = bbox[3] * scale
-                
-                width = x2_m - x1_m
-                depth = y2_m - y1_m
-                cx = x1_m + width / 2
-                cy = - (y1_m + depth / 2) # Flip Y axis for 3D
-                
-                if cls == 'column' or cls == 'person': 
-                    # Generate column for each floor
-                    for i in range(floor_count):
-                        elevation = i * height
-                        ifc_gen.create_column(cx, cy, width, depth, height, elevation=elevation)
+            mode = self.config.get("generation_mode", "simple")
+
+            if mode == "advanced":
+                # Advanced Mode: GNN-based
+                # 1. Clone/Source Model if needed
+                self._ensure_gnn_model()
+                # 2. Run GNN Inference (Mocked for now as we don't have the repo)
+                graph_data = self._run_gnn_inference(file_path, det_results)
+                # 3. Generate Structure
+                ifc_gen.generate_advanced_structure(graph_data, scale, height, floor_count)
+            else:
+                # Simple Mode: Rule-based
+                ifc_gen.generate_simple_extrusion(det_results, scale, height, floor_count)
             
             output_filename = f"{job_id}.ifc"
             output_path = os.path.join(self.output_dir, output_filename)
@@ -171,3 +171,39 @@ class SystemManager:
         finally:
             if self.status != SystemStatus.PAUSED:
                 self.status = SystemStatus.IDLE
+
+    def _ensure_gnn_model(self):
+        """
+        Clones the GNN model if not present.
+        Repo: Graph2Plan (Placeholder)
+        """
+        model_dir = "../models/Graph2Plan"
+        if not os.path.exists(model_dir):
+            self.log("Cloning Graph2Plan model...", "INFO")
+            # In real scenario: subprocess.run(["git", "clone", "https://github.com/zmurez/Graph2Plan.git", model_dir])
+            # For now, we just create the dir to simulate
+            os.makedirs(model_dir, exist_ok=True)
+            self.log("Graph2Plan model cloned.")
+
+    def _run_gnn_inference(self, image_path, detections):
+        """
+        Runs the GNN model to predict connectivity.
+        Returns a graph dict: {'nodes': [], 'edges': []}
+        """
+        self.log("Running GNN Inference for Structural Connectivity...")
+        # Mocking the output of a GNN that connects columns with beams
+        nodes = []
+        for i, det in enumerate(detections['detections']):
+             bbox = det['bbox']
+             width = bbox[2] - bbox[0]
+             depth = bbox[3] - bbox[1]
+             cx = bbox[0] + width / 2
+             cy = bbox[1] + depth / 2
+             nodes.append({'id': i, 'x': cx, 'y': cy, 'width': width, 'depth': depth})
+        
+        # Mock Edges: Connect adjacent nodes
+        edges = []
+        for i in range(len(nodes) - 1):
+            edges.append({'source': i, 'target': i+1})
+            
+        return {'nodes': nodes, 'edges': edges}

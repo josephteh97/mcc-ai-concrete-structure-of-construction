@@ -23,7 +23,7 @@ function App() {
     alert(`Parameters updated: ${JSON.stringify(newParams)}`);
   };
 
-  const handleUpload = async () => {
+  const handleUpload = async (mode = 'simple') => {
     if (!file) return;
 
     setLoading(true);
@@ -32,6 +32,7 @@ function App() {
     formData.append('scale', constructionParams.scale);
     formData.append('height', constructionParams.height);
     formData.append('floor_count', constructionParams.floor_count);
+    formData.append('generation_mode', mode);
 
     try {
       // Adjust URL to your backend
@@ -76,16 +77,41 @@ function App() {
           />
         </div>
 
-        <button
-          onClick={handleUpload}
-          disabled={!file || loading}
-          className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors
-            ${!file || loading 
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-blue-600 hover:bg-blue-700'}`}
-        >
-          {loading ? 'Processing...' : 'Generate 3D Model'}
-        </button>
+        {/* Floor Count Input */}
+        <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-gray-700">Number of Floors</label>
+            <input 
+                type="number" 
+                min="1"
+                value={constructionParams.floor_count}
+                onChange={(e) => setConstructionParams(prev => ({ ...prev, floor_count: parseInt(e.target.value) || 1 }))}
+                className="block w-full p-2 text-sm border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            />
+        </div>
+
+        <div className="flex flex-col gap-3">
+            <button
+              onClick={() => handleUpload('simple')}
+              disabled={!file || loading}
+              className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors
+                ${!file || loading 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-green-600 hover:bg-green-700'}`}
+            >
+              {loading ? 'Processing...' : 'Simple Task (Rule-based)'}
+            </button>
+
+            <button
+              onClick={() => handleUpload('advanced')}
+              disabled={!file || loading}
+              className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors
+                ${!file || loading 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-purple-600 hover:bg-purple-700'}`}
+            >
+              {loading ? 'Processing...' : 'Advanced Task (GNN Agent)'}
+            </button>
+        </div>
 
         {stats && (
           <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
