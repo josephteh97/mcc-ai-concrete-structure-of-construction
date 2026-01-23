@@ -22,6 +22,7 @@ qwen-vl-utils
 torch
 torchvision
 pillow
+matplotlib>=3.9.0
 # GNN Dependencies for Advanced Reconstruction
 # git+https://github.com/microsoft/Graphormer.git
 # torch-geometric
