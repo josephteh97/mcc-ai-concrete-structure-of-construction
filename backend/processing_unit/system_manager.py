@@ -1,6 +1,7 @@
 import uuid
 import os
 import shutil
+import subprocess
 from enum import Enum
 from typing import Dict, Any, List, Optional
 import time
@@ -175,15 +176,23 @@ class SystemManager:
     def _ensure_gnn_model(self):
         """
         Clones the GNN model if not present.
-        Repo: Graph2Plan (Placeholder)
+        Repo: Graphormer (Microsoft) - Adapted for Structural Connectivity
         """
-        model_dir = "../models/Graph2Plan"
+        model_dir = "../models/Graphormer"
         if not os.path.exists(model_dir):
-            self.log("Cloning Graph2Plan model...", "INFO")
-            # In real scenario: subprocess.run(["git", "clone", "https://github.com/zmurez/Graph2Plan.git", model_dir])
-            # For now, we just create the dir to simulate
-            os.makedirs(model_dir, exist_ok=True)
-            self.log("Graph2Plan model cloned.")
+            self.log("Cloning Graphormer model...", "INFO")
+            try:
+                subprocess.run(["git", "clone", "https://github.com/microsoft/Graphormer.git", model_dir], check=True)
+                self.log("Graphormer model cloned successfully.")
+            except subprocess.CalledProcessError as e:
+                self.log(f"Failed to clone Graphormer: {e}", "ERROR")
+        else:
+            self.log("Graphormer repository already exists. Skipping clone.", "INFO")
+            
+        if os.path.exists(model_dir):
+             self.log("Graphormer model found/cloned.")
+        else:
+             self.log("Graphormer model NOT found. Please check git availability.", "WARN")
 
     def _run_gnn_inference(self, image_path, detections):
         """

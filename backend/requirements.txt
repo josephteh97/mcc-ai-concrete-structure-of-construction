@@ -23,7 +23,9 @@ torch
 torchvision
 pillow
 # GNN Dependencies for Advanced Reconstruction
+# git+https://github.com/microsoft/Graphormer.git
 # torch-geometric
 # torch-scatter
 # torch-sparse
+# fairseq
 # python==3.10.12
