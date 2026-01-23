@@ -1,30 +1,32 @@
 fastapi==0.109.0
 uvicorn==0.27.0
+# python-multipart==0.0.6
 python-multipart>=0.0.9
+# ultralytics==8.4.6
 ultralytics>=8.2.0
-opencv-python-headless>=4.10.0.84
-paddlepaddle>=2.6.0
-paddleocr>=2.7.0.3
+opencv-python-headless==4.10.0.84
+paddlepaddle==3.3.0
+paddleocr==2.7.0.3
 # The following 3 packages used for exporting to ONNX format after YOLO model training
-onnx>=1.16.0
-onnxslim>=0.1.30
-onnxruntime-gpu>=1.18.0
+onnx==1.20.1
+onnxslim==0.1.82
+onnxruntime-gpu==1.23.2
 # ifcopenshell   use conda to install ifcopenshell  0.8.4
 # conda install -c conda-forge ifcopenshell
-numpy>=1.26.0
-requests>=2.31.0
-roboflow>=1.1.0
+numpy==1.26.4
+requests==2.31.0
+roboflow==1.2.12
 lark
 # Qwen2.5-VL Dependencies (Requires latest transformers from source)
 git+https://github.com/huggingface/transformers
 accelerate
 qwen-vl-utils
-torch>=2.0.0
-torchvision>=0.15.0
-pillow>=10.0.0
+torch
+torchvision
+pillow
 matplotlib>=3.9.0
 # GNN Dependencies for Advanced Reconstruction
-# git+https://github.com/microsoft/Graphormer.git
+# git+https://github.com/microsoft/Graphormer
 # torch-geometric
 # torch-scatter
 # torch-sparse
