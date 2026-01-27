@@ -178,7 +178,7 @@ class SystemManager:
         Clones the GNN model if not present.
         Repo: Graphormer (Microsoft) - Adapted for Structural Connectivity
         """
-        model_dir = "../models/Graphormer"
+        model_dir = os.environ.get("GNN_MODEL_PATH", "../models/Graphormer")
         if not os.path.exists(model_dir):
             self.log("Cloning Graphormer model...", "INFO")
             try:

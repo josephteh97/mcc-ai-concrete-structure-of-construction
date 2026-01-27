@@ -58,3 +58,40 @@ git clone https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
 # ../models/Qwen2.5-VL-3B-Instruct
 # You can override this by setting the QWEN_MODEL_PATH environment variable.
 ```
+
+##### Advanced Reconstruction (GNN: Graphormer)
+```bash
+# Clone Graphormer (Microsoft) for GNN-based structural connectivity
+cd ../models
+git clone https://github.com/microsoft/Graphormer.git
+
+# The backend checks ../models/Graphormer automatically in advanced mode.
+# If not present, SystemManager will attempt to clone it at runtime.
+```
+
+##### Environment Variables (Optional)
+```bash
+# Override Qwen model location if you used a custom path
+export QWEN_MODEL_PATH="$(pwd)/models/Qwen2.5-VL-3B-Instruct"
+# On Linux/macOS:
+# export QWEN_MODEL_PATH=../models/Qwen2.5-VL-3B-Instruct
+
+# Override Graphormer model path (Advanced mode)
+export GNN_MODEL_PATH="$(pwd)/models/Graphormer"
+# On Linux/macOS:
+# export GNN_MODEL_PATH=../models/Graphormer
+```
+
+Persist across sessions
+```bash
+# ensure git lfs is installed
+sudo apt update && sudo apt install -y git-lfs && git lfs install
+
+echo 'export QWEN_MODEL_PATH="$HOME/Documents/mcc-ai-concrete-structure-of-construction/models/Qwen2.5-VL-3B-Instruct"' >> ~/.bashrc
+echo 'export GNN_MODEL_PATH="$HOME/Documents/mcc-ai-concrete-structure-of-construction/models/Graphormer"' >> ~/.bashrc
+source ~/.bashrc
+
+# quick check
+echo "$QWEN_MODEL_PATH"
+echo "$GNN_MODEL_PATH"
+```
