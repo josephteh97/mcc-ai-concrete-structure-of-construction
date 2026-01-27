@@ -14,7 +14,7 @@ dependencies:
     - opencv-python-headless==4.10.0.84
     - paddlepaddle==3.3.0
     - paddleocr==2.7.0.3
-    - git+https://github.com/huggingface/transformers@v4.44.2
+    - transformers==4.44.2
     - accelerate==0.33.0
     - qwen-vl-utils==0.0.8
     - torch==2.9.1
