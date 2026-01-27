@@ -27,3 +27,4 @@ dependencies:
     - pillow==10.4.0
     - lark==1.1.9
     - roboflow==1.2.12
+    - PyMuPDF==1.20.2

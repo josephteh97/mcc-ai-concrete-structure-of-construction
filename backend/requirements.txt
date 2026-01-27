@@ -26,6 +26,7 @@ requests==2.31.0
 pillow==10.4.0
 lark==1.1.9
 roboflow==1.2.12
+PyMuPDF==1.20.2
 
 # Note: ifcopenshell must be installed via conda
 # conda install -c conda-forge ifcopenshell

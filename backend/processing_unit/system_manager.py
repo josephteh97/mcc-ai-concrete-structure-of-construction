@@ -5,6 +5,7 @@ import subprocess
 from enum import Enum
 from typing import Dict, Any, List, Optional
 import time
+import fitz
 
 # Import actual processing classes
 from processing_unit.object_detection import ObjectDetector
@@ -40,9 +41,8 @@ class SystemManager:
             "generation_mode": "simple" # "simple" or "advanced"
         }
         
-        # Load Models
-        # Check for custom trained model in project root or default
-        model_path = "../yolo26n.pt" if os.path.exists("../yolo26n.pt") else "yolo11n.pt"
+        model_path_env = os.environ.get("YOLO_MODEL_PATH")
+        model_path = model_path_env if model_path_env else ("../yolo26n.pt" if os.path.exists("../yolo26n.pt") else "yolo11n.pt")
         self.detector = ObjectDetector(model_path=model_path)
         self.ocr = OCRExtractor()
         
@@ -109,11 +109,18 @@ class SystemManager:
         Internal method to execute the core processing logic.
         """
         try:
-            # Step 2: Detection
+            input_paths = [file_path]
+            if file_path.lower().endswith(".pdf"):
+                input_paths = self._convert_pdf_to_images(file_path, job_id)
+            total = 0
+            merged = []
             self.current_job["step"] = "detection"
             self.log(f"Starting Object Detection with conf={self.config['conf_threshold']}...")
-            
-            det_results = self.detector.predict(file_path, conf_threshold=self.config['conf_threshold'])
+            for p in input_paths:
+                r = self.detector.predict(p, conf_threshold=self.config['conf_threshold'])
+                total += r["count"]
+                merged.extend(r["detections"])
+            det_results = {"count": total, "detections": merged}
             
             # Monitoring / Intervention Point
             if det_results['count'] == 0:
@@ -194,6 +201,17 @@ class SystemManager:
         else:
              self.log("Graphormer model NOT found. Please check git availability.", "WARN")
 
+    def _convert_pdf_to_images(self, pdf_path: str, job_id: str) -> List[str]:
+        paths = []
+        doc = fitz.open(pdf_path)
+        for i in range(len(doc)):
+            page = doc.load_page(i)
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            img_path = os.path.join(self.upload_dir, f"{job_id}_page_{i+1}.png")
+            pix.save(img_path)
+            paths.append(img_path)
+        doc.close()
+        return paths
     def _run_gnn_inference(self, image_path, detections):
         """
         Runs the GNN model to predict connectivity.
