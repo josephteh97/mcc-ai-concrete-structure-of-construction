@@ -24,7 +24,7 @@ conda install -c conda-forge ifcopenshell
 The rest of the Python ecosystem libraries are managed via `pip`.
 
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 > **Note:** `requirements.txt` contains specific versions for `fastapi`, `ultralytics`, `paddlepaddle`, etc. Ensure you install `ifcopenshell` via Conda *before* running pip install to prevent dependency conflicts.
