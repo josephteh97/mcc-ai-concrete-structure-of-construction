@@ -9,7 +9,7 @@ import json
 import re
 
 try:
-    from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+    from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoModelForCausalLM
     from qwen_vl_utils import process_vision_info
     HAS_QWEN = True
 except ImportError:
@@ -48,7 +48,12 @@ class VisionReasoner:
             try:
                 # Use Qwen2_5_VLForConditionalGeneration or fall back to AutoModel if using a different variant
                 # Added trust_remote_code=True for newer/custom models like Qwen3-Thinking
-                self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                try:
+                    model_cls = Qwen2_5_VLForConditionalGeneration
+                except NameError:
+                    model_cls = AutoModelForCausalLM
+
+                self.model = model_cls.from_pretrained(
                     self.local_model_path, 
                     torch_dtype="auto", 
                     device_map="auto",
