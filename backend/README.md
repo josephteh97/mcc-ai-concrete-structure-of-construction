@@ -25,6 +25,8 @@ The rest of the Python ecosystem libraries are managed via `pip`.
 
 ```bash
 pip install -r backend/requirements.txt
+
+conda env create -f environment.yml
 ```
 
 > **Note:** `requirements.txt` contains specific versions for `fastapi`, `ultralytics`, `paddlepaddle`, etc. Ensure you install `ifcopenshell` via Conda *before* running pip install to prevent dependency conflicts.
