@@ -47,3 +47,27 @@ if os.path.exists(test_model_path):
 else:
     print(f"[SKIP] Model path {test_model_path} does not exist. Skipping load test.")
     print("To test actual loading, ensure the model is cloned at that path.")
+
+print("\n--- Testing YOLO Object Detector Loading ---")
+try:
+    from processing_unit.object_detection import ObjectDetector
+    
+    # Check for custom model path environment variable
+    yolo_path = os.environ.get("YOLO_MODEL_PATH", "../yolo26n.pt")
+    # Fallback to default if not found (logic from system_manager)
+    if not os.path.exists(yolo_path):
+        yolo_path = "yolo11n.pt" # Ultralytics will auto-download this
+        
+    print(f"Target YOLO Path: {yolo_path}")
+    
+    detector = ObjectDetector(model_path=yolo_path)
+    print(f"[SUCCESS] YOLO model loaded from {yolo_path}")
+    
+    # Optional: Verify it can run a dummy inference
+    # import numpy as np
+    # dummy_img = np.zeros((640, 640, 3), dtype=np.uint8)
+    # detector.predict(dummy_img)
+    # print("[SUCCESS] YOLO dummy inference passed")
+
+except Exception as e:
+    print(f"[FAIL] YOLO model failed to load: {e}")
