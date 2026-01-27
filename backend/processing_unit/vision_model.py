@@ -9,11 +9,21 @@ import json
 import re
 
 try:
-    from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoModelForCausalLM
-    from qwen_vl_utils import process_vision_info
-    HAS_QWEN = True
+    # Try importing the specific class first (newer transformers)
+    from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+    HAS_QWEN_CLASS = True
 except ImportError:
-    HAS_QWEN = False
+    # Fallback to generic AutoModel (older transformers)
+    from transformers import AutoModelForCausalLM, AutoProcessor
+    HAS_QWEN_CLASS = False
+
+try:
+    from qwen_vl_utils import process_vision_info
+    HAS_QWEN_UTILS = True
+except ImportError:
+    HAS_QWEN_UTILS = False
+
+HAS_QWEN = (HAS_QWEN_CLASS or True) and HAS_QWEN_UTILS # AutoModel is always available in modern transformers
 
 from processing_unit.system_manager import SystemManager, SystemStatus
 
@@ -48,9 +58,10 @@ class VisionReasoner:
             try:
                 # Use Qwen2_5_VLForConditionalGeneration or fall back to AutoModel if using a different variant
                 # Added trust_remote_code=True for newer/custom models like Qwen3-Thinking
-                try:
+                if HAS_QWEN_CLASS:
                     model_cls = Qwen2_5_VLForConditionalGeneration
-                except NameError:
+                else:
+                    # Fallback for older transformers versions
                     model_cls = AutoModelForCausalLM
 
                 self.model = model_cls.from_pretrained(
