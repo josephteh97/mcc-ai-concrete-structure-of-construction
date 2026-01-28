@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Html, Loader } from '@react-three/drei';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
+import webIfcWasmUrl from 'web-ifc/web-ifc.wasm?url';
+import webIfcMtWasmUrl from 'web-ifc/web-ifc-mt.wasm?url';
+import webIfcMtJsUrl from 'web-ifc/web-ifc-mt.js?url';
 
 const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
   const { scene, camera } = useThree();
@@ -15,7 +18,13 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
     // Initialize loader once
     if (!ifcLoader.current) {
       ifcLoader.current = new IFCLoader();
-      ifcLoader.current.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.36/');
+      const wasmUrl = webIfcWasmUrl;
+      const wasmDir = wasmUrl.substring(0, wasmUrl.lastIndexOf('/') + 1);
+      ifcLoader.current.ifcManager.setWasmPath(wasmDir);
+      if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
+        ifcLoader.current.ifcManager.useWebWorkers(false);
+      }
+      console.log(`[IFC Viewer] WASM dir: ${wasmDir}`);
     }
 
     onLoadStart();
