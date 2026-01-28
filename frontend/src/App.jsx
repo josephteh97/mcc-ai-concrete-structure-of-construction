@@ -70,7 +70,10 @@ function App() {
       
       {/* Sidebar / Control Panel */}
       <div className="w-full md:w-80 bg-white p-6 shadow-xl z-10 flex flex-col gap-6 overflow-y-auto border-r border-slate-200">
-        <h1 className="text-2xl font-bold text-slate-800">MCC AI Construction</h1>
+        <div className="flex flex-col items-center gap-3">
+          <img src={logo} alt="MCC Logo" className="w-20 h-auto" />
+          <h1 className="text-2xl font-bold text-slate-800">MCC AI Construction</h1>
+        </div>
         
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-gray-700">Upload Floor Plan (Image/PDF)</label>
@@ -126,12 +129,12 @@ function App() {
           <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
             <h3 className="font-semibold mb-2">Results</h3>
             <p className="text-sm">Elements Detected: {stats.detections}</p>
-            <p className="text-sm truncate" title={stats.file_id}>ID: {stats.file_id}</p>
+            <p className="text-sm truncate" title={stats.file_id}>ID: {stats.file_id}.ifc</p>
           </div>
         )}
 
-        <div className="flex justify-center mt-2">
-          <img src={mccImg} alt="MCC Structural Illustration" className="w-full h-auto rounded-lg shadow-sm" />
+        <div className="flex justify-center mt-2 flex-grow min-h-[200px]">
+          <img src={mccImg} alt="MCC Structural Illustration" className="w-full h-full object-cover rounded-lg shadow-sm min-h-[300px]" />
         </div>
         
         <div className="mt-auto flex flex-col items-center gap-2 pt-6 border-t border-gray-100">
