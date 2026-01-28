@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import Viewer3D from './components/Viewer3D';
 import ChatWidget from './components/ChatWidget';
+import logo from '../assets/mcc_2.png';
 
 function App() {
   const [file, setFile] = useState(null);
@@ -61,7 +62,10 @@ function App() {
       <ChatWidget onParamsUpdate={handleParamsUpdate} />
       {/* Sidebar / Control Panel */}
       <div className="w-full md:w-80 bg-white p-6 shadow-lg z-10 flex flex-col gap-6 overflow-y-auto">
-        <h1 className="text-2xl font-bold text-blue-600">MCC AI Construction</h1>
+        <div className='flex flex-col items-center gap-2'>
+          <img src={logo} alt='MCC Logo' className="w-32 h-auto" />
+          <h1 className="text-2xl font-bold text-blue-600">MCC AI Construction</h1>
+        </div>
         
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-gray-700">Upload Floor Plan (Image/PDF)</label>
