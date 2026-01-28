@@ -17,8 +17,8 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
     // Initialize loader once
     if (!ifcLoader.current) {
       ifcLoader.current = new IFCLoader();
-      const wasmUrl = webIfcWasmUrl;
-      const wasmDir = wasmUrl.substring(0, wasmUrl.lastIndexOf('/') + 1);
+      // Force using CDN WASM first to avoid local bundling/linkage mismatches
+      const wasmDir = 'https://unpkg.com/web-ifc@0.0.53/';
       ifcLoader.current.ifcManager.setWasmPath(wasmDir);
       if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
         ifcLoader.current.ifcManager.useWebWorkers(false);
