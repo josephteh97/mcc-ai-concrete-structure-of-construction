@@ -17,6 +17,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
   ]);
   const [currentWasm, setCurrentWasm] = useState('https://unpkg.com/web-ifc@0.0.47/');
   const watchdog = useRef(null);
+  const finalized = useRef(false);
 
   useEffect(() => {
     if (!url) return;
@@ -48,7 +49,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
     }
     watchdog.current = setTimeout(async () => {
       try {
-        if (ifcLoader.current && url) {
+        if (ifcLoader.current && url && !finalized.current) {
           const retry = await ifcLoader.current.loadAsync(url);
           let ok = false;
           retry.traverse((child) => { if (child.isMesh) ok = true; });
@@ -56,6 +57,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
             onError('Timeout fallback: no geometry');
             return;
           }
+          finalized.current = true;
           modelRef.current = retry;
           scene.add(retry);
           const box = new THREE.Box3().setFromObject(retry);
@@ -73,7 +75,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
       } catch (e) {
         onError(`Timeout fallback failed: ${e.message || 'Unknown error'}`);
       }
-    }, 15000);
+    }, 5000);
 
     ifcLoader.current.load(
       url,
@@ -92,6 +94,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
           return;
         }
 
+        finalized.current = true;
         modelRef.current = ifcModel;
         scene.add(ifcModel);
         
@@ -119,6 +122,36 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
         const percent = Math.round((progress.loaded / progress.total) * 100);
         console.log(`[IFC Viewer] Loading progress: ${percent}%`);
         onProgress && onProgress(percent);
+        // If network finished but onLoad hasn't fired, force finalize
+        if (percent >= 100 && !finalized.current) {
+          (async () => {
+            try {
+              const parsed = await ifcLoader.current.loadAsync(url);
+              let ok = false;
+              parsed.traverse((child) => { if (child.isMesh) ok = true; });
+              if (!ok) {
+                onError('Finalization: model has no geometry');
+                return;
+              }
+              finalized.current = true;
+              modelRef.current = parsed;
+              scene.add(parsed);
+              const box = new THREE.Box3().setFromObject(parsed);
+              const center = box.getCenter(new THREE.Vector3());
+              const size = box.getSize(new THREE.Vector3());
+              const maxDim = Math.max(size.x, size.y, size.z);
+              const fov = camera.fov * (Math.PI / 180);
+              let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
+              cameraZ *= 3;
+              camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
+              camera.lookAt(center);
+              camera.updateProjectionMatrix();
+              onLoadComplete();
+            } catch (e) {
+              onError(`Finalization failed: ${e.message || 'Unknown error'}`);
+            }
+          })();
+        }
       },
       (error) => {
         console.error('[IFC Viewer] Critical Error during loading:', error);
@@ -153,6 +186,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
                 onError('Model loaded but contains no geometry (retry).');
                 return;
               }
+              finalized.current = true;
               modelRef.current = retryModel;
               scene.add(retryModel);
               const box = new THREE.Box3().setFromObject(retryModel);
@@ -194,6 +228,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
                         onError('Model loaded but contains no geometry (retry chain).');
                         return;
                       }
+                      finalized.current = true;
                       modelRef.current = model2;
                       scene.add(model2);
                       const box = new THREE.Box3().setFromObject(model2);
@@ -238,6 +273,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
         clearTimeout(watchdog.current);
         watchdog.current = null;
       }
+      finalized.current = false;
     };
   }, [url, scene, camera]);
 
