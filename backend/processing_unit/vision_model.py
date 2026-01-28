@@ -28,10 +28,11 @@ HAS_QWEN = (HAS_QWEN_CLASS or True) and HAS_QWEN_UTILS # AutoModel is always ava
 from processing_unit.system_manager import SystemManager, SystemStatus
 
 class VisionReasoner:
-    def __init__(self, model_type: str = "qwen-vl"):
+    def __init__(self, system=None, model_type: str = "qwen-vl"):
         self.model_type = model_type
-        # In a real scenario, we would inject the SystemManager instance or get the singleton
-        self.system = SystemManager() 
+        # Allow injecting a system instance (useful for testing or shared state)
+        # If none provided, use the singleton SystemManager
+        self.system = system if system else SystemManager() 
         
         self.model = None
         self.processor = None

@@ -27,7 +27,12 @@ else:
 
 # Mock SystemManager for initialization
 class MockSystem:
-    pass
+    def __init__(self):
+        self.status = type('obj', (object,), {'value': 'idle'})
+        self.config = {}
+        self.logs = []
+    def log(self, msg, level="INFO"):
+        print(f"[MockLog] {msg}")
 
 print("\n--- Testing Model Loading (Dry Run) ---")
 # Set a dummy path to trigger the logic, or use real path if exists
@@ -37,7 +42,8 @@ print(f"Target Model Path: {test_model_path}")
 if os.path.exists(test_model_path):
     print("Model path exists. Attempting instantiation...")
     try:
-        reasoner = VisionReasoner(MockSystem())
+        # Pass the MockSystem to avoid triggering real SystemManager (which loads YOLO)
+        reasoner = VisionReasoner(system=MockSystem())
         if reasoner.is_model_loaded:
             print(f"[SUCCESS] Model loaded successfully using {'Qwen2_5_VLForConditionalGeneration' if vm.HAS_QWEN_CLASS else 'AutoModelForCausalLM'}.")
         else:
@@ -46,17 +52,24 @@ if os.path.exists(test_model_path):
         print(f"[CRITICAL] Crash during instantiation: {e}")
 else:
     print(f"[SKIP] Model path {test_model_path} does not exist. Skipping load test.")
-    print("To test actual loading, ensure the model is cloned at that path.")
 
 print("\n--- Testing YOLO Object Detector Loading ---")
 try:
     from processing_unit.object_detection import ObjectDetector
     
     # Check for custom model path environment variable
-    yolo_path = os.environ.get("YOLO_MODEL_PATH", "./yolo26n.pt")
-    # Fallback to default if not found (logic from system_manager)
-    if not os.path.exists(yolo_path):
-        yolo_path = "yolo11n.pt" # Ultralytics will auto-download this
+    yolo_path = os.environ.get("YOLO_MODEL_PATH")
+    
+    if not yolo_path:
+        # Logic from system_manager.py
+        yolo26_paths = ["yolo26n.pt", "../yolo26n.pt", "backend/yolo26n.pt"]
+        for p in yolo26_paths:
+            if os.path.exists(p):
+                yolo_path = p
+                break
+    
+    if not yolo_path:
+        yolo_path = "yolo11n.pt" # Fallback
         
     print(f"Target YOLO Path: {yolo_path}")
     

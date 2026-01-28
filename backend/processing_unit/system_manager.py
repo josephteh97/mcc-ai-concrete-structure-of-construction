@@ -42,7 +42,17 @@ class SystemManager:
         }
         
         model_path_env = os.environ.get("YOLO_MODEL_PATH")
-        model_path = model_path_env if model_path_env else ("../yolo26n.pt" if os.path.exists("../yolo26n.pt") else "yolo11n.pt")
+        # Check root directory (one level up from backend) and current directory
+        yolo26_paths = ["yolo26n.pt", "../yolo26n.pt", "backend/yolo26n.pt"]
+        default_yolo = "yolo11n.pt"
+        
+        selected_path = None
+        for p in yolo26_paths:
+            if os.path.exists(p):
+                selected_path = p
+                break
+        
+        model_path = model_path_env if model_path_env else (selected_path if selected_path else default_yolo)
         self.detector = ObjectDetector(model_path=model_path)
         self.ocr = OCRExtractor()
         
