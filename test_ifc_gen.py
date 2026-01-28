@@ -101,6 +101,17 @@ def start_debug_server():
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
     class Handler(BaseHTTPRequestHandler):
+        def _send_cors(self):
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Origin, Range, Accept")
+            self.send_header("Access-Control-Expose-Headers", "Content-Length, Content-Type")
+
+        def do_OPTIONS(self):
+            self.send_response(204)
+            self._send_cors()
+            self.end_headers()
+
         def do_HEAD(self):
             if self.path == f"/download/{OUTPUT_FILE}":
                 try:
@@ -108,12 +119,15 @@ def start_debug_server():
                     self.send_response(200)
                     self.send_header("Content-Type", "application/octet-stream")
                     self.send_header("Content-Length", str(size))
+                    self._send_cors()
                     self.end_headers()
                 except Exception:
                     self.send_response(404)
+                    self._send_cors()
                     self.end_headers()
             else:
-                self.send_response(405)
+                self.send_response(404)
+                self._send_cors()
                 self.end_headers()
         def do_GET(self):
             if self.path == f"/download/{OUTPUT_FILE}":
@@ -123,10 +137,12 @@ def start_debug_server():
                     self.send_response(200)
                     self.send_header("Content-Type", "application/octet-stream")
                     self.send_header("Content-Length", str(len(data)))
+                    self._send_cors()
                     self.end_headers()
                     self.wfile.write(data)
                 else:
                     self.send_response(404)
+                    self._send_cors()
                     self.end_headers()
             elif self.path == "/":
                 # Simple root response for health check
@@ -134,10 +150,12 @@ def start_debug_server():
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain")
                 self.send_header("Content-Length", str(len(msg)))
+                self._send_cors()
                 self.end_headers()
                 self.wfile.write(msg)
             else:
                 self.send_response(404)
+                self._send_cors()
                 self.end_headers()
     def run_server():
         server = HTTPServer(("0.0.0.0", 8000), Handler)
