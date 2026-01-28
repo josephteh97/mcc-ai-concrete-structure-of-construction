@@ -26,9 +26,9 @@ class IfcGenerator:
         self.storey = ifcopenshell.api.run("root.create_entity", self.model, ifc_class="IfcBuildingStorey", name="Level 1")
 
         # Assign hierarchy
-        ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.project, related_object=self.site)
-        ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.site, related_object=self.building)
-        ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.building, related_object=self.storey)
+        ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.project, products=[self.site])
+        ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.site, products=[self.building])
+        ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.building, products=[self.storey])
 
     def create_column(self, x: float, y: float, width: float, depth: float, height: float, elevation: float = 0.0):
         """
