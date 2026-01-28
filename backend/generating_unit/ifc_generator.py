@@ -54,15 +54,17 @@ class IfcGenerator:
         
         # Place the column
         # Matrix is [x, y, z]
-        matrix = ifcopenshell.api.run("geometry.calculate_matrix", self.model, local_placement=None)
-        matrix[0][3] = x
-        matrix[1][3] = y
-        matrix[2][3] = elevation # Set Z elevation
+        matrix = [
+            [1.0, 0.0, 0.0, x],
+            [0.0, 1.0, 0.0, y],
+            [0.0, 0.0, 1.0, elevation],
+            [0.0, 0.0, 0.0, 1.0]
+        ]
         
         ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=column, matrix=matrix)
         
         # Assign to storey
-        ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, related_elements=[column])
+        ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[column])
         
         return column
 
@@ -136,15 +138,36 @@ class IfcGenerator:
         ifcopenshell.api.run("geometry.assign_representation", self.model, product=element, representation=representation)
         
         # Placement
-        matrix = ifcopenshell.api.run("geometry.calculate_matrix", self.model, local_placement=None)
-        matrix[0][3] = x
-        matrix[1][3] = y
-        matrix[2][3] = elevation
+        # Fix: Manually construct the matrix instead of using the API if it's missing in this version
+        # 4x4 Identity Matrix with translation
+        # [ 1, 0, 0, x ]
+        # [ 0, 1, 0, y ]
+        # [ 0, 0, 1, z ]
+        # [ 0, 0, 0, 1 ]
+        
+        # However, ifcopenshell.api.run("geometry.edit_object_placement") expects a certain format or 
+        # we can just use "geometry.edit_object_placement" with a dictionary if supported, 
+        # or creating the placement manually.
+        
+        # Let's try to see if we can just pass the matrix directly to edit_object_placement if it supports it, 
+        # OR use a simpler way: create placement manually.
+        
+        # Correct approach for 0.8.4+ if calculate_matrix is missing:
+        # Just create the local placement.
+        
+        # But wait, edit_object_placement usually takes a matrix.
+        # If calculate_matrix is missing, we can provide the matrix as a nested list.
+        matrix = [
+            [1.0, 0.0, 0.0, x],
+            [0.0, 1.0, 0.0, y],
+            [0.0, 0.0, 1.0, elevation],
+            [0.0, 0.0, 0.0, 1.0]
+        ]
         
         ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=element, matrix=matrix)
         
         # Assign to storey
-        ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, related_elements=[element])
+        ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[element])
         return element
 
     def generate_simple_extrusion(self, det_results: dict, scale: float, height: float, floor_count: int):
