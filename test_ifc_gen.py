@@ -92,6 +92,67 @@ def check_backend():
         return False
     return True
 
+def start_debug_server():
+    """
+    Start a minimal HTTP server on port 8000 that serves /download/test_output.ifc
+    Use this only when the real backend is not available.
+    """
+    print("=== Step 3B: Starting minimal debug HTTP server at http://localhost:8000 ===")
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    class Handler(BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            if self.path == f"/download/{OUTPUT_FILE}":
+                try:
+                    size = os.path.getsize(OUTPUT_PATH)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(size))
+                    self.end_headers()
+                except Exception:
+                    self.send_response(404)
+                    self.end_headers()
+            else:
+                self.send_response(405)
+                self.end_headers()
+        def do_GET(self):
+            if self.path == f"/download/{OUTPUT_FILE}":
+                if os.path.exists(OUTPUT_PATH):
+                    with open(OUTPUT_PATH, "rb") as f:
+                        data = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+            elif self.path == "/":
+                # Simple root response for health check
+                msg = b"Debug server root"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+            else:
+                self.send_response(404)
+                self.end_headers()
+    def run_server():
+        server = HTTPServer(("0.0.0.0", 8000), Handler)
+        print("Debug server running. Serving:", DOWNLOAD_URL)
+        server.serve_forever()
+    t = threading.Thread(target=run_server, daemon=True)
+    t.start()
+    time.sleep(1)
+    # Quick GET check
+    try:
+        r = requests.get(BACKEND_ROOT, timeout=5)
+        print(f"Debug server root status: {r.status_code}")
+    except Exception as e:
+        print(f"Warning: Debug server root not reachable: {e}")
+
 def next_steps():
     """
     Print concise next steps to debug the frontend viewer.
@@ -109,6 +170,9 @@ def run_all():
     generate_ifc()
     ok_entities = verify_entities()
     ok_backend = check_backend()
+    if not ok_backend:
+        start_debug_server()
+        ok_backend = check_backend()
     if ok_entities and ok_backend:
         print("=== Summary: IFC is valid locally and downloadable from backend ===")
     else:

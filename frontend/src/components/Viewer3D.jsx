@@ -5,7 +5,7 @@ import { OrbitControls, Environment, Grid, Html, Loader } from '@react-three/dre
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
 import webIfcWasmUrl from 'web-ifc/web-ifc.wasm?url';
 
-const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
+const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
   const { scene, camera } = useThree();
   const ifcLoader = useRef(null);
   const modelRef = useRef(null);
@@ -17,8 +17,9 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
     // Initialize loader once
     if (!ifcLoader.current) {
       ifcLoader.current = new IFCLoader();
-      // Force using CDN WASM first to avoid local bundling/linkage mismatches
-      const wasmDir = 'https://unpkg.com/web-ifc@0.0.53/';
+      // Default: use local package asset path
+      const wasmUrl = webIfcWasmUrl;
+      const wasmDir = wasmUrl.substring(0, wasmUrl.lastIndexOf('/') + 1);
       ifcLoader.current.ifcManager.setWasmPath(wasmDir);
       if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
         ifcLoader.current.ifcManager.useWebWorkers(false);
@@ -89,6 +90,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
           if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
             ifcLoader.current.ifcManager.useWebWorkers(false);
           }
+          onRetry && onRetry();
           // Retry once
           ifcLoader.current.load(
             url,
@@ -141,6 +143,9 @@ const Viewer3D = ({ ifcUrl }) => {
   const [loadingStatus, setLoadingStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error'
   const [errorMessage, setErrorMessage] = useState('');
   const [netInfo, setNetInfo] = useState(null);
+  const [attempts, setAttempts] = useState(0);
+  const [errors, setErrors] = useState(0);
+  const [retries, setRetries] = useState(0);
 
   console.log(`[Viewer3D] Current Status: ${loadingStatus}, URL: ${ifcUrl}`);
 
@@ -172,7 +177,7 @@ const Viewer3D = ({ ifcUrl }) => {
     <div className="w-full h-full bg-black relative border-4 border-blue-900">
       {/* Debug Info Overlay */}
       <div className="absolute top-2 left-2 z-30 text-[10px] text-blue-400 font-mono bg-black bg-opacity-50 p-1 pointer-events-none">
-        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()} | {netInfo ? `HEAD ${netInfo.status} ${netInfo.ok ? 'OK' : 'ERR'} ${netInfo.type || ''} ${netInfo.length || ''}` : 'HEAD N/A'}
+        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()} | ATT: {attempts} ERR: {errors} RETRY: {retries} | {netInfo ? `HEAD ${netInfo.status} ${netInfo.ok ? 'OK' : 'ERR'} ${netInfo.type || ''} ${netInfo.length || ''}` : 'HEAD N/A'}
       </div>
 
       {/* Status Overlay */}
@@ -212,12 +217,15 @@ const Viewer3D = ({ ifcUrl }) => {
             onLoadStart={() => {
               setLoadingStatus('loading');
               setErrorMessage('');
+              setAttempts((v) => v + 1);
             }}
             onLoadComplete={() => setLoadingStatus('success')}
             onError={(msg) => {
               setLoadingStatus('error');
               setErrorMessage(msg);
+              setErrors((v) => v + 1);
             }}
+            onRetry={() => setRetries((v) => v + 1)}
           />
         )}
         
