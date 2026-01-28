@@ -3,6 +3,7 @@ import axios from 'axios';
 import Viewer3D from './components/Viewer3D';
 import ChatWidget from './components/ChatWidget';
 import logo from '../assets/mcc_2.png';
+import mccImg from '../assets/mcc_img.png';
 
 function App() {
   const [file, setFile] = useState(null);
@@ -71,6 +72,17 @@ function App() {
         <div className='flex flex-col items-center gap-2'>
           <img src={logo} alt='MCC Logo' className="w-32 h-auto" />
           <h1 className="text-2xl font-bold text-blue-600">MCC AI Construction</h1>
+        </div>
+
+        <div className="relative overflow-hidden rounded-xl bg-blue-900 shadow-inner">
+          <img 
+            src={mccImg} 
+            alt="Structural Analysis" 
+            className="w-full h-32 object-cover opacity-70 hover:opacity-100 transition-opacity duration-500"
+          />
+          <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black to-transparent p-3">
+            <p className="text-xs font-semibold text-white uppercase tracking-wider">AI Structural Analysis</p>
+          </div>
         </div>
         
         <div className="flex flex-col gap-2">
