@@ -87,7 +87,7 @@ class IfcGenerator:
         ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=column, matrix=matrix)
         
         # Assign material
-        ifcopenshell.api.run("material.assign_material", self.model, product=column, material=self.material)
+        ifcopenshell.api.run("material.assign_material", self.model, products=[column], material=self.material)
         
         # Assign to storey
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[column])
@@ -143,7 +143,7 @@ class IfcGenerator:
         ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=beam, matrix=matrix)
         
         # Assign material
-        ifcopenshell.api.run("material.assign_material", self.model, product=beam, material=self.material)
+        ifcopenshell.api.run("material.assign_material", self.model, products=[beam], material=self.material)
         
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[beam])
         
@@ -171,7 +171,7 @@ class IfcGenerator:
         ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=slab, matrix=matrix)
         
         # Assign material
-        ifcopenshell.api.run("material.assign_material", self.model, product=slab, material=self.material)
+        ifcopenshell.api.run("material.assign_material", self.model, products=[slab], material=self.material)
         
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[slab])
         
@@ -223,7 +223,7 @@ class IfcGenerator:
         ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=element, matrix=matrix)
         
         # Assign material
-        ifcopenshell.api.run("material.assign_material", self.model, product=element, material=self.material)
+        ifcopenshell.api.run("material.assign_material", self.model, products=[element], material=self.material)
         
         # Assign to storey
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[element])
