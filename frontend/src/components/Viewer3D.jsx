@@ -9,6 +9,13 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
   const ifcLoader = useRef(null);
   const modelRef = useRef(null);
   const didFallback = useRef(false);
+  const fallbackIndex = useRef(0);
+  const fallbackList = useRef([
+    'https://unpkg.com/web-ifc@0.0.47/',
+    'https://unpkg.com/web-ifc@0.0.53/',
+    'https://unpkg.com/web-ifc@0.0.36/',
+  ]);
+  const [currentWasm, setCurrentWasm] = useState('https://unpkg.com/web-ifc@0.0.47/');
 
   useEffect(() => {
     if (!url) return;
@@ -17,7 +24,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
     if (!ifcLoader.current) {
       ifcLoader.current = new IFCLoader();
       // Default: use local package asset path
-      const wasmDir = 'https://unpkg.com/web-ifc@0.0.47/';
+      const wasmDir = currentWasm;
       ifcLoader.current.ifcManager.setWasmPath(wasmDir);
       if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
         ifcLoader.current.ifcManager.useWebWorkers(false);
@@ -80,10 +87,17 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
         const msg = `Failed to fetch or parse IFC file: ${error.message || 'Unknown error'}`;
         // Fallback: retry with CDN wasm path once if we hit LinkError
         const isLinkError = String(error).includes('LinkError');
-        if (isLinkError && !didFallback.current) {
+        if (isLinkError) {
+          const nextIdx = fallbackIndex.current + 1;
+          const altWasmDir = fallbackList.current[nextIdx];
+          if (!altWasmDir) {
+            onError(msg);
+            return;
+          }
           didFallback.current = true;
-          const altWasmDir = 'https://unpkg.com/web-ifc@0.0.47/';
-          console.log('[IFC Viewer] LinkError detected. Falling back to CDN wasm:', altWasmDir);
+          fallbackIndex.current = nextIdx;
+          setCurrentWasm(altWasmDir);
+          console.log('[IFC Viewer] LinkError detected. Trying next WASM:', altWasmDir);
           ifcLoader.current.ifcManager.setWasmPath(altWasmDir);
           if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
             ifcLoader.current.ifcManager.useWebWorkers(false);
@@ -93,7 +107,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
           ifcLoader.current.load(
             url,
             (retryModel) => {
-              console.log('[IFC Viewer] Retry succeeded with CDN wasm.');
+              console.log('[IFC Viewer] Retry succeeded with alternate WASM.');
               // Basic geometry validation
               let hasGeometry = false;
               retryModel.traverse((child) => { if (child.isMesh) hasGeometry = true; });
@@ -118,6 +132,49 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
             undefined,
             (retryErr) => {
               console.error('[IFC Viewer] Retry failed:', retryErr);
+              const isStillLinkError = String(retryErr).includes('LinkError');
+              if (isStillLinkError) {
+                // recursively try next option
+                const nextIdx2 = fallbackIndex.current + 1;
+                const nextWasm = fallbackList.current[nextIdx2];
+                if (nextWasm) {
+                  fallbackIndex.current = nextIdx2;
+                  setCurrentWasm(nextWasm);
+                  console.log('[IFC Viewer] Retry failed with current WASM. Trying next:', nextWasm);
+                  ifcLoader.current.ifcManager.setWasmPath(nextWasm);
+                  ifcLoader.current.ifcManager.useWebWorkers?.(false);
+                  ifcLoader.current.load(url,
+                    (model2) => {
+                      console.log('[IFC Viewer] Retry succeeded with alternate chain.');
+                      let ok = false;
+                      model2.traverse((child) => { if (child.isMesh) ok = true; });
+                      if (!ok) {
+                        onError('Model loaded but contains no geometry (retry chain).');
+                        return;
+                      }
+                      modelRef.current = model2;
+                      scene.add(model2);
+                      const box = new THREE.Box3().setFromObject(model2);
+                      const center = box.getCenter(new THREE.Vector3());
+                      const size = box.getSize(new THREE.Vector3());
+                      const maxDim = Math.max(size.x, size.y, size.z);
+                      const fov = camera.fov * (Math.PI / 180);
+                      let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
+                      cameraZ *= 3;
+                      camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
+                      camera.lookAt(center);
+                      camera.updateProjectionMatrix();
+                      onLoadComplete();
+                    },
+                    undefined,
+                    (err3) => {
+                      console.error('[IFC Viewer] Retry chain failed:', err3);
+                      onError(`Retry chain failed: ${err3.message || 'Unknown error'}`);
+                    }
+                  );
+                  return;
+                }
+              }
               onError(`Retry failed: ${retryErr.message || 'Unknown error'}`);
             }
           );
