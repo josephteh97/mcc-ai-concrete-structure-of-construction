@@ -4,7 +4,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Html, Loader } from '@react-three/drei';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
 
-const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
+const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgress }) => {
   const { scene, camera } = useThree();
   const ifcLoader = useRef(null);
   const modelRef = useRef(null);
@@ -16,6 +16,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
     'https://unpkg.com/web-ifc@0.0.36/',
   ]);
   const [currentWasm, setCurrentWasm] = useState('https://unpkg.com/web-ifc@0.0.47/');
+  const watchdog = useRef(null);
 
   useEffect(() => {
     if (!url) return;
@@ -41,6 +42,38 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
     }
 
     console.log(`[IFC Viewer] Attempting to load: ${url}`);
+
+    if (watchdog.current) {
+      clearTimeout(watchdog.current);
+    }
+    watchdog.current = setTimeout(async () => {
+      try {
+        if (ifcLoader.current && url) {
+          const retry = await ifcLoader.current.loadAsync(url);
+          let ok = false;
+          retry.traverse((child) => { if (child.isMesh) ok = true; });
+          if (!ok) {
+            onError('Timeout fallback: no geometry');
+            return;
+          }
+          modelRef.current = retry;
+          scene.add(retry);
+          const box = new THREE.Box3().setFromObject(retry);
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const fov = camera.fov * (Math.PI / 180);
+          let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
+          cameraZ *= 3;
+          camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
+          camera.lookAt(center);
+          camera.updateProjectionMatrix();
+          onLoadComplete();
+        }
+      } catch (e) {
+        onError(`Timeout fallback failed: ${e.message || 'Unknown error'}`);
+      }
+    }, 15000);
 
     ifcLoader.current.load(
       url,
@@ -77,10 +110,15 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
         camera.updateProjectionMatrix();
         
         onLoadComplete();
+        if (watchdog.current) {
+          clearTimeout(watchdog.current);
+          watchdog.current = null;
+        }
       },
       (progress) => {
         const percent = Math.round((progress.loaded / progress.total) * 100);
         console.log(`[IFC Viewer] Loading progress: ${percent}%`);
+        onProgress && onProgress(percent);
       },
       (error) => {
         console.error('[IFC Viewer] Critical Error during loading:', error);
@@ -128,6 +166,10 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
               camera.lookAt(center);
               camera.updateProjectionMatrix();
               onLoadComplete();
+              if (watchdog.current) {
+                clearTimeout(watchdog.current);
+                watchdog.current = null;
+              }
             },
             undefined,
             (retryErr) => {
@@ -165,6 +207,10 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
                       camera.lookAt(center);
                       camera.updateProjectionMatrix();
                       onLoadComplete();
+                      if (watchdog.current) {
+                        clearTimeout(watchdog.current);
+                        watchdog.current = null;
+                      }
                     },
                     undefined,
                     (err3) => {
@@ -188,6 +234,10 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
       if (modelRef.current) {
         scene.remove(modelRef.current);
       }
+      if (watchdog.current) {
+        clearTimeout(watchdog.current);
+        watchdog.current = null;
+      }
     };
   }, [url, scene, camera]);
 
@@ -203,6 +253,8 @@ const Viewer3D = ({ ifcUrl }) => {
   const [retries, setRetries] = useState(0);
   const [wasmInfo, setWasmInfo] = useState(null);
   const [wasmInfoFallback, setWasmInfoFallback] = useState(null);
+  const [progressPct, setProgressPct] = useState(0);
+  const watchdog = useRef(null);
 
   console.log(`[Viewer3D] Current Status: ${loadingStatus}, URL: ${ifcUrl}`);
 
@@ -257,7 +309,7 @@ const Viewer3D = ({ ifcUrl }) => {
     <div className="w-full h-full bg-black relative border-4 border-blue-900">
       {/* Debug Info Overlay */}
       <div className="absolute top-2 left-2 z-30 text-[10px] text-blue-400 font-mono bg-black bg-opacity-50 p-1 pointer-events-none">
-        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()} | ATT: {attempts} ERR: {errors} RETRY: {retries} | {netInfo ? `HEAD ${netInfo.status} ${netInfo.ok ? 'OK' : 'ERR'} ${netInfo.type || ''} ${netInfo.length || ''}` : 'HEAD N/A'} | WASM {wasmInfo ? `${wasmInfo.status} ${wasmInfo.ok ? 'OK' : 'ERR'} ${wasmInfo.type || ''} ${wasmInfo.length || ''}` : 'N/A'}
+        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()} | ATT: {attempts} ERR: {errors} RETRY: {retries} PROG: {progressPct}% | {netInfo ? `HEAD ${netInfo.status} ${netInfo.ok ? 'OK' : 'ERR'} ${netInfo.type || ''} ${netInfo.length || ''}` : 'HEAD N/A'} | WASM {wasmInfo ? `${wasmInfo.status} ${wasmInfo.ok ? 'OK' : 'ERR'} ${wasmInfo.type || ''} ${wasmInfo.length || ''}` : 'N/A'}
       </div>
 
       {/* Status Overlay */}
@@ -306,8 +358,11 @@ const Viewer3D = ({ ifcUrl }) => {
               setErrors((v) => v + 1);
             }}
             onRetry={() => setRetries((v) => v + 1)}
+            onProgress={(p) => setProgressPct(p)}
           />
         )}
+        
+        
         
         <OrbitControls makeDefault />
         <Environment preset="city" />
