@@ -3,6 +3,7 @@ import axios from 'axios';
 import Viewer3D from './components/Viewer3D';
 import ChatWidget from './components/ChatWidget';
 import logo from '../assets/mcc_2.png';
+import mccImg from '../assets/mcc_img.png';
 
 function App() {
   const [file, setFile] = useState(null);
@@ -128,6 +129,10 @@ function App() {
             <p className="text-sm truncate" title={stats.file_id}>ID: {stats.file_id}</p>
           </div>
         )}
+
+        <div className="flex justify-center mt-2">
+          <img src={mccImg} alt="MCC Structural Illustration" className="w-full h-auto rounded-lg shadow-sm" />
+        </div>
         
         <div className="mt-auto flex flex-col items-center gap-2 pt-6 border-t border-gray-100">
           <img src={logo} alt="MCC Logo" className="w-24 h-auto opacity-80" />
