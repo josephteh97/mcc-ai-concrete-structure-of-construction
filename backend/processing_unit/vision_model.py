@@ -113,7 +113,7 @@ class VisionReasoner:
         It can inspect system state and trigger actions.
         """
         if not self.is_model_loaded:
-            return self._chat_fallback_regex(message)
+            return await self._chat_fallback_regex(message)
 
         # 1. Build Agent Context
         status = self.system.status.value
@@ -197,9 +197,10 @@ OR
 
         return response
 
-    def _chat_fallback_regex(self, message: str) -> dict:
+    async def _chat_fallback_regex(self, message: str) -> dict:
         """
         Original regex-based implementation for fallback.
+        Now async to support workflow control.
         """
         message_lower = message.lower()
         response = {
@@ -234,7 +235,7 @@ OR
             response["updated_params"]["generation_mode"] = "simple"
             response["reply"] = "Manager: Switched to Simple Mode (Rule-based Extrusion)."
 
-        # Confidence Threshold (e.g., "set threshold to 0.1", "conf 0.2")
+        # Confidence Threshold
         conf_match = re.search(r"(?:threshold|conf|confidence)\s*(?:to|is|=)?\s*([0-9]*\.?[0-9]+)", message_lower)
         if conf_match:
             try:
@@ -242,7 +243,7 @@ OR
                 if 0 < val < 1.0:
                     self.system.update_config("conf_threshold", val)
                     response["updated_params"]["conf_threshold"] = val
-                    response["reply"] = f"Manager: Confidence threshold set to {val}. This might help detect more (or fewer) objects."
+                    response["reply"] = f"Manager: Confidence threshold set to {val}."
                 else:
                     response["reply"] = "Manager: Confidence threshold must be between 0 and 1."
             except ValueError:
@@ -251,47 +252,28 @@ OR
         # 3. Intervention / Workflow Control 
         if "retry" in message_lower or "resume" in message_lower or "try again" in message_lower: 
             if self.system.status == SystemStatus.PAUSED: 
-                # This part requires async handling, which is tricky in a synchronous helper if we called it from sync code
-                # But here we are calling it from async wrapper or direct call. 
-                # However, _chat_fallback_regex is synchronous? No, let's make it return a dict and handle async in caller if needed.
-                # Or just return a special flag.
-                # For simplicity, we can't easily await inside this helper if we don't make it async.
-                # Let's make it return a "pending_action" or just text.
-                # Actually, the original code was inside an async function.
-                response["reply"] = "Manager: (Fallback) Please say 'retry' again to the main agent."
-                # We can't easily execute the resume here without making this async.
-                # Let's just strip the complex resume logic from fallback for now or duplicate it in the async caller.
-                pass 
+                response["reply"] = "Manager: Resuming workflow with the current settings..." 
+                result = await self.system.resume_workflow() 
+                
+                if result.get("status") == "success": 
+                    response["reply"] += f"\nSuccess! Process completed. Download: {result.get('ifc_url')}" 
+                elif result.get("status") == "paused": 
+                    response["reply"] += f"\nStill no luck. Reason: {result.get('message')}" 
+                else: 
+                    response["reply"] += f"\nError encountered: {result.get('message')}" 
+                return response 
+            else:
+                response["reply"] = "Manager: The system is not currently paused, so there is nothing to resume."
+                return response
 
-        # 4. Proactive Clarification & Safety Checks (Agentic Behavior)
-        # Case A: Missing Parameters (Counter-asking)
+        # 4. Proactive Clarification & Safety Checks
         elif "floor" in message_lower and not response["updated_params"] and ("set" in message_lower or "change" in message_lower):
-            response["reply"] = "Manager: You mentioned setting the floor count, but I missed the number. How many floors should I assume? (e.g., 'set floors to 5')"
+            response["reply"] = "Manager: You mentioned setting the floor count, but I missed the number. How many floors should I assume?"
             
         elif ("threshold" in message_lower or "confidence" in message_lower) and not response["updated_params"] and ("set" in message_lower or "change" in message_lower):
-            response["reply"] = "Manager: It sounds like you want to adjust the detection sensitivity. What confidence threshold should I use? (0.0 to 1.0)"
+            response["reply"] = "Manager: What confidence threshold should I use? (0.0 to 1.0)"
 
-        # Case B: Context Mismatch (User gives wrong instruction for current state)
-        elif ("start" in message_lower or "process" in message_lower) and self.system.status == SystemStatus.PAUSED:
-             response["reply"] = "Manager: The system is currently PAUSED due to a previous issue. Do you want me to 'retry' with the current settings, or would you like to update configuration first?"
-             
-        elif ("start" in message_lower or "process" in message_lower) and self.system.status == SystemStatus.PROCESSING:
-             response["reply"] = "Manager: I am currently busy processing the current job. Please wait for it to complete."
-
-        # Case C: Error State Handling
-        elif self.system.status == SystemStatus.ERROR and "status" not in message_lower:
-             # Find the last error log
-             error_msg = "Unknown Error"
-             if self.system.logs:
-                for log in reversed(self.system.logs):
-                    if "ERROR" in log:
-                        error_msg = log.split("]")[-1].strip() # Remove timestamp
-                        break
-             
-             if "retry" not in message_lower and "reset" not in message_lower:
-                 response["reply"] = f"Manager: The system is halted due to an error: '{error_msg}'.\nShould I 'retry' the operation, or would you like to upload a new file?"
-
-        # Fallback / General Info 
+        # Fallback
         elif response["reply"] == "I received your message.": 
              response["reply"] = "Manager: (Fallback Mode) I am monitoring the workflow. If you need to change settings, just tell me (e.g., 'set floors to 5')." 
 
