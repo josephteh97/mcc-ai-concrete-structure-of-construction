@@ -18,6 +18,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
   const [currentWasm, setCurrentWasm] = useState('https://unpkg.com/web-ifc@0.0.47/');
   const watchdog = useRef(null);
   const finalized = useRef(false);
+  const stuckTimer = useRef(null);
 
   useEffect(() => {
     if (!url) return;
@@ -124,6 +125,12 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
         onProgress && onProgress(percent);
         // If network finished but onLoad hasn't fired, force finalize
         if (percent >= 100 && !finalized.current) {
+          if (stuckTimer.current) clearTimeout(stuckTimer.current);
+          stuckTimer.current = setTimeout(() => {
+            if (!finalized.current) {
+              onError('Downloaded IFC but parsing did not finalize');
+            }
+          }, 3000);
           (async () => {
             try {
               const parsed = await ifcLoader.current.loadAsync(url);
@@ -134,6 +141,10 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
                 return;
               }
               finalized.current = true;
+              if (stuckTimer.current) {
+                clearTimeout(stuckTimer.current);
+                stuckTimer.current = null;
+              }
               modelRef.current = parsed;
               scene.add(parsed);
               const box = new THREE.Box3().setFromObject(parsed);
@@ -272,6 +283,10 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
       if (watchdog.current) {
         clearTimeout(watchdog.current);
         watchdog.current = null;
+      }
+      if (stuckTimer.current) {
+        clearTimeout(stuckTimer.current);
+        stuckTimer.current = null;
       }
       finalized.current = false;
     };
