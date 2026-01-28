@@ -3,6 +3,7 @@ import axios from 'axios';
 import Viewer3D from './components/Viewer3D';
 import ChatWidget from './components/ChatWidget';
 import logo from '../assets/mcc_2.png';
+import bgImage from '../assets/mcc_img.png';
 
 function App() {
   const [file, setFile] = useState(null);
@@ -64,11 +65,18 @@ function App() {
   console.log("App Component Rendering - Version 1.1 (Logo + Overlays)");
 
   return (
-    <div className="flex h-screen w-screen flex-col md:flex-row bg-gray-100">
+    <div 
+      className="flex h-screen w-screen flex-col md:flex-row bg-cover bg-center bg-no-repeat relative"
+      style={{ backgroundImage: `url(${bgImage})` }}
+    >
+      {/* Overlay to ensure readability and professional look */}
+      <div className="absolute inset-0 bg-slate-900/40 pointer-events-none"></div>
+
       <ChatWidget onParamsUpdate={handleParamsUpdate} />
+      
       {/* Sidebar / Control Panel */}
-      <div className="w-full md:w-80 bg-white p-6 shadow-lg z-10 flex flex-col gap-6 overflow-y-auto">
-        <h1 className="text-2xl font-bold text-blue-600">MCC AI Construction</h1>
+      <div className="w-full md:w-80 bg-white/90 backdrop-blur-md p-6 shadow-2xl z-10 flex flex-col gap-6 overflow-y-auto border-r border-white/20">
+        <h1 className="text-2xl font-bold text-blue-700 drop-shadow-sm">MCC AI Construction</h1>
         
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-gray-700">Upload Floor Plan (Image/PDF)</label>
@@ -137,11 +145,13 @@ function App() {
       </div>
 
       {/* 3D Viewer Area */}
-      <div className="flex-1 relative bg-gray-900">
+      <div className="flex-1 relative bg-transparent backdrop-blur-[2px]">
         <Viewer3D ifcUrl={ifcUrl} />
         {!ifcUrl && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500 pointer-events-none">
-            <p>Upload a drawing to generate 3D model</p>
+          <div className="absolute inset-0 flex items-center justify-center text-white font-medium drop-shadow-lg pointer-events-none">
+            <p className="bg-black/20 px-6 py-3 rounded-full backdrop-blur-md border border-white/10">
+              Upload a drawing to generate 3D model
+            </p>
           </div>
         )}
       </div>
