@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Html, Loader } from '@react-three/drei';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
-import webIfcWasmUrl from 'web-ifc/web-ifc.wasm?url';
 
 const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
   const { scene, camera } = useThree();
@@ -18,8 +17,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
     if (!ifcLoader.current) {
       ifcLoader.current = new IFCLoader();
       // Default: use local package asset path
-      const wasmUrl = webIfcWasmUrl;
-      const wasmDir = wasmUrl.substring(0, wasmUrl.lastIndexOf('/') + 1);
+      const wasmDir = 'https://unpkg.com/web-ifc@0.0.47/';
       ifcLoader.current.ifcManager.setWasmPath(wasmDir);
       if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
         ifcLoader.current.ifcManager.useWebWorkers(false);
@@ -84,7 +82,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry }) => {
         const isLinkError = String(error).includes('LinkError');
         if (isLinkError && !didFallback.current) {
           didFallback.current = true;
-          const altWasmDir = 'https://unpkg.com/web-ifc@0.0.53/';
+          const altWasmDir = 'https://unpkg.com/web-ifc@0.0.47/';
           console.log('[IFC Viewer] LinkError detected. Falling back to CDN wasm:', altWasmDir);
           ifcLoader.current.ifcManager.setWasmPath(altWasmDir);
           if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
@@ -179,10 +177,7 @@ const Viewer3D = ({ ifcUrl }) => {
   useEffect(() => {
     const probeWasm = async () => {
       try {
-        // Derive current wasm dir from local package asset URL
-        const wasmUrl = webIfcWasmUrl;
-        const dir = wasmUrl.substring(0, wasmUrl.lastIndexOf('/') + 1);
-        const url = `${dir}web-ifc.wasm`;
+        const url = 'https://unpkg.com/web-ifc@0.0.47/web-ifc.wasm';
         const res = await fetch(url, { method: 'HEAD' });
         const info = {
           ok: res.ok,
