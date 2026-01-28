@@ -4,6 +4,7 @@ import shutil
 import os
 import uuid
 from typing import Optional
+from fastapi import Response
 
 from processing_unit.vision_model import VisionReasoner
 from processing_unit.system_manager import SystemManager
@@ -68,6 +69,20 @@ def download_file(filename: str):
     if os.path.exists(path):
         return FileResponse(path)
     return {"error": "File not found"}
+
+@app.head("/download/{filename}")
+def download_head(filename: str):
+    path = os.path.join(system_manager.output_dir, filename)
+    if os.path.exists(path):
+        size = os.path.getsize(path)
+        headers = {
+            "Content-Type": "application/p21",
+            "Content-Length": str(size),
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Length, Content-Type",
+        }
+        return Response(status_code=200, headers=headers)
+    return Response(status_code=404)
 
 @app.get("/debug/sample-ifc")
 def debug_sample_ifc():
