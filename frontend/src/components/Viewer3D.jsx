@@ -146,6 +146,8 @@ const Viewer3D = ({ ifcUrl }) => {
   const [attempts, setAttempts] = useState(0);
   const [errors, setErrors] = useState(0);
   const [retries, setRetries] = useState(0);
+  const [wasmInfo, setWasmInfo] = useState(null);
+  const [wasmInfoFallback, setWasmInfoFallback] = useState(null);
 
   console.log(`[Viewer3D] Current Status: ${loadingStatus}, URL: ${ifcUrl}`);
 
@@ -173,11 +175,37 @@ const Viewer3D = ({ ifcUrl }) => {
     check();
   }, [ifcUrl]);
 
+  // Probe WASM availability (main)
+  useEffect(() => {
+    const probeWasm = async () => {
+      try {
+        // Derive current wasm dir from local package asset URL
+        const wasmUrl = webIfcWasmUrl;
+        const dir = wasmUrl.substring(0, wasmUrl.lastIndexOf('/') + 1);
+        const url = `${dir}web-ifc.wasm`;
+        const res = await fetch(url, { method: 'HEAD' });
+        const info = {
+          ok: res.ok,
+          status: res.status,
+          type: res.headers.get('content-type'),
+          length: res.headers.get('content-length'),
+          url,
+        };
+        setWasmInfo(info);
+        console.log('[IFC Viewer] WASM HEAD(main):', info);
+      } catch (e) {
+        setWasmInfo({ ok: false, status: 0, type: null, length: null, url: 'N/A' });
+        console.log('[IFC Viewer] WASM HEAD(main) failed');
+      }
+    };
+    probeWasm();
+  }, []);
+
   return (
     <div className="w-full h-full bg-black relative border-4 border-blue-900">
       {/* Debug Info Overlay */}
       <div className="absolute top-2 left-2 z-30 text-[10px] text-blue-400 font-mono bg-black bg-opacity-50 p-1 pointer-events-none">
-        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()} | ATT: {attempts} ERR: {errors} RETRY: {retries} | {netInfo ? `HEAD ${netInfo.status} ${netInfo.ok ? 'OK' : 'ERR'} ${netInfo.type || ''} ${netInfo.length || ''}` : 'HEAD N/A'}
+        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()} | ATT: {attempts} ERR: {errors} RETRY: {retries} | {netInfo ? `HEAD ${netInfo.status} ${netInfo.ok ? 'OK' : 'ERR'} ${netInfo.type || ''} ${netInfo.length || ''}` : 'HEAD N/A'} | WASM {wasmInfo ? `${wasmInfo.status} ${wasmInfo.ok ? 'OK' : 'ERR'} ${wasmInfo.type || ''} ${wasmInfo.length || ''}` : 'N/A'}
       </div>
 
       {/* Status Overlay */}
