@@ -53,7 +53,7 @@ try:
     from processing_unit.object_detection import ObjectDetector
     
     # Check for custom model path environment variable
-    yolo_path = os.environ.get("YOLO_MODEL_PATH", "../yolo26n.pt")
+    yolo_path = os.environ.get("YOLO_MODEL_PATH", "./yolo26n.pt")
     # Fallback to default if not found (logic from system_manager)
     if not os.path.exists(yolo_path):
         yolo_path = "yolo11n.pt" # Ultralytics will auto-download this
