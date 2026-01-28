@@ -104,7 +104,7 @@ class IfcGenerator:
         # (It requires setting the Axis and RefDirection in IfcAxis2Placement3D).
         
         ifcopenshell.api.run("geometry.assign_representation", self.model, product=beam, representation=representation)
-        ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, related_elements=[beam])
+        ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[beam])
         
         return beam
 
@@ -118,7 +118,7 @@ class IfcGenerator:
         # For arbitrary polygon, we need createIfcArbitraryClosedProfileDef
         
         # ... Implementation omitted for brevity, assuming rectangular for now ...
-        ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, related_elements=[slab])
+        ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[slab])
         return slab
 
     def create_generic_element(self, x: float, y: float, width: float, depth: float, height: float, elevation: float, ifc_class="IfcBuildingElementProxy", name="Element"):
