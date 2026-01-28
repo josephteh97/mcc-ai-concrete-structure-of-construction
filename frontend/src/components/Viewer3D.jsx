@@ -21,7 +21,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
     }
 
     // Setup IFC Loader
-    ifcLoader.current.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.53/');
+    ifcLoader.current.ifcManager.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/');
 
     console.log(`[IFC Viewer] Attempting to load: ${url}`);
 
