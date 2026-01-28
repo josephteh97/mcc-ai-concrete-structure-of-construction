@@ -129,6 +129,40 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
           stuckTimer.current = setTimeout(() => {
             if (!finalized.current) {
               onError('Downloaded IFC but parsing did not finalize');
+              // Try alternate sample IFC
+              if (ifcLoader.current) {
+                const alt = 'http://localhost:8000/debug/sample-ifc';
+                console.log('[IFC Viewer] Attempting alternate sample IFC:', alt);
+                ifcLoader.current.load(
+                  alt,
+                  (modelAlt) => {
+                    let ok = false;
+                    modelAlt.traverse((child) => { if (child.isMesh) ok = true; });
+                    if (!ok) {
+                      onError('Alternate sample loaded but contains no geometry');
+                      return;
+                    }
+                    finalized.current = true;
+                    modelRef.current = modelAlt;
+                    scene.add(modelAlt);
+                    const box = new THREE.Box3().setFromObject(modelAlt);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const fov = camera.fov * (Math.PI / 180);
+                    let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
+                    cameraZ *= 3;
+                    camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
+                    camera.lookAt(center);
+                    camera.updateProjectionMatrix();
+                    onLoadComplete();
+                  },
+                  undefined,
+                  (altErr) => {
+                    console.error('[IFC Viewer] Alternate sample failed:', altErr);
+                  }
+                );
+              }
             }
           }, 3000);
           (async () => {
