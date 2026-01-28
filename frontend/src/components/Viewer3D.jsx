@@ -78,127 +78,39 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
       }
     }, 5000);
 
-    ifcLoader.current.load(
-      url,
-      (ifcModel) => {
-        console.log('[IFC Viewer] Model loaded successfully from server.');
-        
-        // Validation: Check if model has any meshes
+    (async () => {
+      try {
+        const res = await fetch(url);
+        const buf = await res.arrayBuffer();
+        const ifcModel = await ifcLoader.current.parse(new Uint8Array(buf));
+        console.log('[IFC Viewer] Model parsed successfully from buffer.');
         let hasGeometry = false;
         ifcModel.traverse((child) => {
           if (child.isMesh) hasGeometry = true;
         });
-
         if (!hasGeometry) {
-          console.warn('[IFC Viewer] Warning: Model loaded but no 3D geometry found. The file might be empty or invalid.');
-          onError('Model loaded but contains no geometry.');
+          onError('Parsed model has no geometry');
           return;
         }
-
         finalized.current = true;
         modelRef.current = ifcModel;
         scene.add(ifcModel);
-        
-        // Auto-focus camera on the model
         const box = new THREE.Box3().setFromObject(ifcModel);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
-        
         const maxDim = Math.max(size.x, size.y, size.z);
         const fov = camera.fov * (Math.PI / 180);
         let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
         cameraZ *= 3;
-
         camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
         camera.lookAt(center);
         camera.updateProjectionMatrix();
-        
         onLoadComplete();
         if (watchdog.current) {
           clearTimeout(watchdog.current);
           watchdog.current = null;
         }
-      },
-      (progress) => {
-        const percent = Math.round((progress.loaded / progress.total) * 100);
-        console.log(`[IFC Viewer] Loading progress: ${percent}%`);
-        onProgress && onProgress(percent);
-        // If network finished but onLoad hasn't fired, force finalize
-        if (percent >= 100 && !finalized.current) {
-          if (stuckTimer.current) clearTimeout(stuckTimer.current);
-          stuckTimer.current = setTimeout(() => {
-            if (!finalized.current) {
-              onError('Downloaded IFC but parsing did not finalize');
-              // Try alternate sample IFC
-              if (ifcLoader.current) {
-                const alt = 'http://localhost:8000/debug/sample-ifc';
-                console.log('[IFC Viewer] Attempting alternate sample IFC:', alt);
-                ifcLoader.current.load(
-                  alt,
-                  (modelAlt) => {
-                    let ok = false;
-                    modelAlt.traverse((child) => { if (child.isMesh) ok = true; });
-                    if (!ok) {
-                      onError('Alternate sample loaded but contains no geometry');
-                      return;
-                    }
-                    finalized.current = true;
-                    modelRef.current = modelAlt;
-                    scene.add(modelAlt);
-                    const box = new THREE.Box3().setFromObject(modelAlt);
-                    const center = box.getCenter(new THREE.Vector3());
-                    const size = box.getSize(new THREE.Vector3());
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const fov = camera.fov * (Math.PI / 180);
-                    let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
-                    cameraZ *= 3;
-                    camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
-                    camera.lookAt(center);
-                    camera.updateProjectionMatrix();
-                    onLoadComplete();
-                  },
-                  undefined,
-                  (altErr) => {
-                    console.error('[IFC Viewer] Alternate sample failed:', altErr);
-                  }
-                );
-              }
-            }
-          }, 3000);
-          (async () => {
-            try {
-              const parsed = await ifcLoader.current.loadAsync(url);
-              let ok = false;
-              parsed.traverse((child) => { if (child.isMesh) ok = true; });
-              if (!ok) {
-                onError('Finalization: model has no geometry');
-                return;
-              }
-              finalized.current = true;
-              if (stuckTimer.current) {
-                clearTimeout(stuckTimer.current);
-                stuckTimer.current = null;
-              }
-              modelRef.current = parsed;
-              scene.add(parsed);
-              const box = new THREE.Box3().setFromObject(parsed);
-              const center = box.getCenter(new THREE.Vector3());
-              const size = box.getSize(new THREE.Vector3());
-              const maxDim = Math.max(size.x, size.y, size.z);
-              const fov = camera.fov * (Math.PI / 180);
-              let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
-              cameraZ *= 3;
-              camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
-              camera.lookAt(center);
-              camera.updateProjectionMatrix();
-              onLoadComplete();
-            } catch (e) {
-              onError(`Finalization failed: ${e.message || 'Unknown error'}`);
-            }
-          })();
-        }
-      },
-      (error) => {
+      } catch (error) {
         console.error('[IFC Viewer] Critical Error during loading:', error);
         const msg = `Failed to fetch or parse IFC file: ${error.message || 'Unknown error'}`;
         // Fallback: retry with CDN wasm path once if we hit LinkError
@@ -220,9 +132,11 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
           }
           onRetry && onRetry();
           // Retry once
-          ifcLoader.current.load(
-            url,
-            (retryModel) => {
+          (async () => {
+            try {
+              const res2 = await fetch(url);
+              const buf2 = await res2.arrayBuffer();
+              const retryModel = await ifcLoader.current.parse(new Uint8Array(buf2));
               console.log('[IFC Viewer] Retry succeeded with alternate WASM.');
               // Basic geometry validation
               let hasGeometry = false;
@@ -249,9 +163,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
                 clearTimeout(watchdog.current);
                 watchdog.current = null;
               }
-            },
-            undefined,
-            (retryErr) => {
+            } catch (retryErr) {
               console.error('[IFC Viewer] Retry failed:', retryErr);
               const isStillLinkError = String(retryErr).includes('LinkError');
               if (isStillLinkError) {
@@ -264,8 +176,10 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
                   console.log('[IFC Viewer] Retry failed with current WASM. Trying next:', nextWasm);
                   ifcLoader.current.ifcManager.setWasmPath(nextWasm);
                   ifcLoader.current.ifcManager.useWebWorkers?.(false);
-                  ifcLoader.current.load(url,
-                    (model2) => {
+                  try {
+                    const res3 = await fetch(url);
+                    const buf3 = await res3.arrayBuffer();
+                    const model2 = await ifcLoader.current.parse(new Uint8Array(buf3));
                       console.log('[IFC Viewer] Retry succeeded with alternate chain.');
                       let ok = false;
                       model2.traverse((child) => { if (child.isMesh) ok = true; });
@@ -291,24 +205,21 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
                         clearTimeout(watchdog.current);
                         watchdog.current = null;
                       }
-                    },
-                    undefined,
-                    (err3) => {
-                      console.error('[IFC Viewer] Retry chain failed:', err3);
-                      onError(`Retry chain failed: ${err3.message || 'Unknown error'}`);
-                    }
-                  );
+                  } catch (err3) {
+                    console.error('[IFC Viewer] Retry chain failed:', err3);
+                    onError(`Retry chain failed: ${err3.message || 'Unknown error'}`);
+                  }
                   return;
                 }
               }
               onError(`Retry failed: ${retryErr.message || 'Unknown error'}`);
             }
-          );
+          })();
           return;
         }
         onError(msg);
       }
-    );
+    })();
 
     return () => {
       if (modelRef.current) {
