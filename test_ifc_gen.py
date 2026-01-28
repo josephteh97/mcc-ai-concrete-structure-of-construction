@@ -162,9 +162,30 @@ def next_steps():
     print(f"- The viewer should load: {DOWNLOAD_URL}")
     print("- In browser console you should see:")
     print("  [IFC Viewer] WASM dir: https://unpkg.com/web-ifc@0.0.53/")
-    print("  [IFC Viewer] Attempting to load: http://localhost:8000/download/test_output.ifc")
+    print(f"  [IFC Viewer] Attempting to load: {DOWNLOAD_URL}")
     print("- If you see LinkError, the viewer will auto-fallback to CDN and retry once.")
     print("- If error persists, capture the exact console logs and the top-left debug tag.")
+
+def probe_download_rejections(attempts: int = 3, delay_sec: float = 0.5):
+    """
+    Try multiple GET attempts and count rejections/non-OK responses.
+    """
+    print(f"=== Step 4B: Probing download rejections (attempts={attempts}) ===")
+    reject = 0
+    ok = 0
+    for i in range(attempts):
+        try:
+            r = requests.get(DOWNLOAD_URL, timeout=5)
+            if r.ok:
+                ok += 1
+            else:
+                reject += 1
+            print(f"Attempt {i+1}: status={r.status_code} ok={r.ok}")
+        except Exception as e:
+            reject += 1
+            print(f"Attempt {i+1}: error={e}")
+        time.sleep(delay_sec)
+    print(f"Summary: OK={ok}, Rejected={reject}")
 
 def run_all():
     generate_ifc()
@@ -173,6 +194,8 @@ def run_all():
     if not ok_backend:
         start_debug_server()
         ok_backend = check_backend()
+    if ok_backend:
+        probe_download_rejections(attempts=3, delay_sec=0.5)
     if ok_entities and ok_backend:
         print("=== Summary: IFC is valid locally and downloadable from backend ===")
     else:
