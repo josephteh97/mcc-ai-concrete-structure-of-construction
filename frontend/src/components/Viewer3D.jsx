@@ -4,8 +4,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Html, Loader } from '@react-three/drei';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
 import webIfcWasmUrl from 'web-ifc/web-ifc.wasm?url';
-import webIfcMtWasmUrl from 'web-ifc/web-ifc-mt.wasm?url';
-import webIfcMtJsUrl from 'web-ifc/web-ifc-mt.js?url';
+
 
 const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
   const { scene, camera } = useThree();
