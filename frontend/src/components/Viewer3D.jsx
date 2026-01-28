@@ -5,7 +5,6 @@ import { OrbitControls, Environment, Grid, Html, Loader } from '@react-three/dre
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
 import webIfcWasmUrl from 'web-ifc/web-ifc.wasm?url';
 
-
 const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
   const { scene, camera } = useThree();
   const ifcLoader = useRef(null);
