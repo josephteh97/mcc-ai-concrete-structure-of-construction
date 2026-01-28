@@ -1,5 +1,6 @@
 from ultralytics import YOLO
 import cv2
+import os
 import numpy as np
 from typing import List, Dict, Any
 
@@ -12,7 +13,17 @@ class ObjectDetector:
             model_path (str): Path to the trained .pt file. 
                               Defaults to standard pre-trained weights if custom model not available.
         """
-        self.model = YOLO(model_path)
+        self.model_path = model_path
+        # Try to load custom trained model first
+        if os.path.exists(self.model_path):
+            print(f"[INFO] Loading Custom YOLO Model from: {os.path.abspath(self.model_path)}")
+            self.model = YOLO(self.model_path)
+        else:
+            print(f"[WARN] Custom model not found at {self.model_path}. Falling back to 'yolo11n.pt' (COCO pretrained).")
+            print("[WARN] Structural elements like columns/beams will NOT be detected correctly.")
+            self.model = YOLO("yolo11n.pt") 
+            
+        print(f"[INFO] YOLO Model Classes: {self.model.names}")
         self.class_names = self.model.names
 
     def predict(self, image_path: str, conf_threshold: float = 0.25) -> Dict[str, Any]:
