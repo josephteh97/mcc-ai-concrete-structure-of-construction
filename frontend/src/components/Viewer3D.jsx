@@ -85,8 +85,15 @@ const Viewer3D = ({ ifcUrl }) => {
   const [loadingStatus, setLoadingStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error'
   const [errorMessage, setErrorMessage] = useState('');
 
+  console.log(`[Viewer3D] Current Status: ${loadingStatus}, URL: ${ifcUrl}`);
+
   return (
-    <div className="w-full h-full bg-gray-900 relative">
+    <div className="w-full h-full bg-black relative border-4 border-blue-900">
+      {/* Debug Info Overlay */}
+      <div className="absolute top-2 left-2 z-30 text-[10px] text-blue-400 font-mono bg-black bg-opacity-50 p-1 pointer-events-none">
+        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()}
+      </div>
+
       {/* Status Overlay */}
       {loadingStatus === 'loading' && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-50 text-white">

@@ -25,9 +25,13 @@ function App() {
   };
 
   const handleUpload = async (mode = 'simple') => {
-    if (!file) return;
+    if (!file) {
+      alert("Please select a file first.");
+      return;
+    }
 
     setLoading(true);
+    setIfcUrl(null); // Clear previous URL to trigger re-render of IFCModel
     const formData = new FormData();
     formData.append('file', file);
     formData.append('scale', constructionParams.scale);
@@ -57,8 +61,10 @@ function App() {
     }
   };
 
+  console.log("App Component Rendering - Version 1.1 (Logo + Overlays)");
+
   return (
-    <div className="flex h-screen w-screen flex-col md:flex-row">
+    <div className="flex h-screen w-screen flex-col md:flex-row bg-gray-100">
       <ChatWidget onParamsUpdate={handleParamsUpdate} />
       {/* Sidebar / Control Panel */}
       <div className="w-full md:w-80 bg-white p-6 shadow-lg z-10 flex flex-col gap-6 overflow-y-auto">
