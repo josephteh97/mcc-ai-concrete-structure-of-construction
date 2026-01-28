@@ -1,23 +1,45 @@
 import React, { useEffect, useRef } from 'react';
+import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid } from '@react-three/drei';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
 
 const IFCModel = ({ url }) => {
-  const { scene } = useThree();
+  const { scene, camera } = useThree();
   const ifcLoader = useRef(new IFCLoader());
+  const modelRef = useRef(null);
 
   useEffect(() => {
     if (!url) return;
 
-    // Setup IFC Loader (requires wasm path configuration in a real app)
-    // For this demo, we assume the wasm files are served correctly or we just try standard load
+    // Cleanup previous model
+    if (modelRef.current) {
+      scene.remove(modelRef.current);
+      modelRef.current = null;
+    }
+
+    // Setup IFC Loader
     ifcLoader.current.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.53/');
 
     ifcLoader.current.load(
       url,
       (ifcModel) => {
+        modelRef.current = ifcModel;
         scene.add(ifcModel);
+        
+        // Auto-focus camera on the model
+        const box = new THREE.Box3().setFromObject(ifcModel);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const fov = camera.fov * (Math.PI / 180);
+        let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
+        cameraZ *= 3; // zoom out a little
+
+        camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
+        camera.lookAt(center);
+        camera.updateProjectionMatrix();
       },
       (progress) => {
         console.log('Loading:', progress);
@@ -28,9 +50,11 @@ const IFCModel = ({ url }) => {
     );
 
     return () => {
-      // Cleanup if needed
+      if (modelRef.current) {
+        scene.remove(modelRef.current);
+      }
     };
-  }, [url, scene]);
+  }, [url, scene, camera]);
 
   return null;
 };

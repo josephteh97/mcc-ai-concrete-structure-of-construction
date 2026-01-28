@@ -6,8 +6,8 @@ import uuid
 
 class IfcGenerator:
     def __init__(self, project_name="ConstructionProject"):
-        # Create a blank model
-        self.model = ifcopenshell.file()
+        # Create a blank model with IFC4 schema for better compatibility with modern viewers
+        self.model = ifcopenshell.file(schema="IFC4")
         
         # Create Project hierarchy
         self.project = ifcopenshell.api.run("root.create_entity", self.model, ifc_class="IfcProject", name=project_name)
@@ -15,20 +15,43 @@ class IfcGenerator:
         # Default units (SI)
         ifcopenshell.api.run("unit.assign_unit", self.model)
         
-        # Create context
+        # Create context with explicit coordinate system
         self.context = ifcopenshell.api.run("context.add_context", self.model, context_type="Model")
+        
+        # Create Body context for geometry
         self.body_context = ifcopenshell.api.run("context.add_context", self.model, context_type="Model", 
                                                  context_identifier="Body", target_view="MODEL_VIEW", parent=self.context)
+
+        # Add a default material
+        self.material = ifcopenshell.api.run("material.add_material", self.model, name="Concrete")
+        self.material_set = ifcopenshell.api.run("material.assign_material", self.model, 
+                                                 products=[], type="IFCMATERIALLAYERSET", material=self.material)
 
         # Create Site, Building, Storey
         self.site = ifcopenshell.api.run("root.create_entity", self.model, ifc_class="IfcSite", name="MySite")
         self.building = ifcopenshell.api.run("root.create_entity", self.model, ifc_class="IfcBuilding", name="MyBuilding")
         self.storey = ifcopenshell.api.run("root.create_entity", self.model, ifc_class="IfcBuildingStorey", name="Level 1")
+        
+        # Set Storey Elevation
+        self.storey.Elevation = 0.0
+
+        # Assign Placements to hierarchy (Critical for rendering)
+        identity_matrix = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]
+        ]
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=self.site, matrix=identity_matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=self.building, matrix=identity_matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=self.storey, matrix=identity_matrix)
 
         # Assign hierarchy
         ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.project, products=[self.site])
         ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.site, products=[self.building])
         ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.building, products=[self.storey])
+        
+        print(f"IFC Hierarchy initialized (IFC4): Project -> Site -> Building -> Storey")
 
     def create_column(self, x: float, y: float, width: float, depth: float, height: float, elevation: float = 0.0):
         """
@@ -63,6 +86,9 @@ class IfcGenerator:
         
         ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=column, matrix=matrix)
         
+        # Assign material
+        ifcopenshell.api.run("material.assign_material", self.model, product=column, material=self.material)
+        
         # Assign to storey
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[column])
         
@@ -81,44 +107,74 @@ class IfcGenerator:
         length = math.sqrt(dx*dx + dy*dy)
         rotation = math.atan2(dy, dx)
         
-        # Profile
-        profile = self.model.createIfcRectangleProfileDef(ProfileType="AREA", XDim=depth, YDim=width) # Note: beam profile orientation
+        # Profile (Beam cross section: depth is height of beam, width is width)
+        profile = self.model.createIfcRectangleProfileDef(ProfileType="AREA", XDim=length, YDim=width)
         
-        # Representation
+        # Representation (Extrude along Z by the 'depth' of the beam)
+        # Note: In IFC, we can extrude a profile along an axis.
+        # To make a beam, we can extrude the rectangular cross-section along the length.
+        # For simplicity, we'll extrude the (length x width) profile by 'depth' (height of beam).
         representation = ifcopenshell.api.run("geometry.add_profile_representation", self.model, 
-                                              context=self.body_context, profile=profile, depth=length)
-        
-        # Rotate the representation to align with the beam axis if needed, 
-        # but usually we rotate the placement.
-        # However, standard extrusion is along Z. We need to rotate the object so its Z axis aligns with our beam line?
-        # Or simpler: ifcopenshell's standard extrusion is vertical.
-        # For a horizontal beam, we need to rotate the extrusion direction or the placement.
-        
-        # Let's try a simpler approach for MVP: Assume horizontal beam is just a box placed and rotated.
-        # Actually, ifcopenshell extrusion is usually along Z.
-        # To make a horizontal beam, we extrude along Z (length) and rotate the whole object 90 degrees around Y (or X) so Z becomes horizontal?
-        # This can be complex.
-        # Alternative: Use 'geometry.add_wall_representation' style logic or just set the extrusion direction.
-        
-        # For now, let's just place it and not worry too much about perfect 3D rotation in this snippet 
-        # (It requires setting the Axis and RefDirection in IfcAxis2Placement3D).
+                                              context=self.body_context, profile=profile, depth=depth)
         
         ifcopenshell.api.run("geometry.assign_representation", self.model, product=beam, representation=representation)
+        
+        # Placement
+        # We need to place the center of the beam at the midpoint and rotate it.
+        cx = (x1 + x2) / 2
+        cy = (y1 + y2) / 2
+        
+        # Rotation Matrix around Z
+        cos_r = math.cos(rotation)
+        sin_r = math.sin(rotation)
+        
+        # Matrix:
+        # [ cos -sin  0  cx ]
+        # [ sin  cos  0  cy ]
+        # [  0    0   1  el ]
+        # [  0    0   0   1 ]
+        matrix = [
+            [cos_r, -sin_r, 0.0, cx],
+            [sin_r,  cos_r, 0.0, cy],
+            [0.0,    0.0,   1.0, elevation],
+            [0.0,    0.0,   0.0, 1.0]
+        ]
+        
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=beam, matrix=matrix)
+        
+        # Assign material
+        ifcopenshell.api.run("material.assign_material", self.model, product=beam, material=self.material)
+        
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[beam])
         
         return beam
 
-    def create_slab(self, points: list, thickness: float):
+    def create_slab(self, x: float, y: float, width: float, depth: float, thickness: float, elevation: float):
         """
-        Create a slab from a list of points [(x,y), ...].
+        Create a rectangular slab.
         """
         slab = ifcopenshell.api.run("root.create_entity", self.model, ifc_class="IfcSlab", name="Slab")
         
-        # Simplified: just a rectangular slab for MVP if points are bounding box
-        # For arbitrary polygon, we need createIfcArbitraryClosedProfileDef
+        profile = self.model.createIfcRectangleProfileDef(ProfileType="AREA", XDim=width, YDim=depth)
+        representation = ifcopenshell.api.run("geometry.add_profile_representation", self.model, 
+                                              context=self.body_context, profile=profile, depth=thickness)
         
-        # ... Implementation omitted for brevity, assuming rectangular for now ...
+        ifcopenshell.api.run("geometry.assign_representation", self.model, product=slab, representation=representation)
+        
+        matrix = [
+            [1.0, 0.0, 0.0, x],
+            [0.0, 1.0, 0.0, y],
+            [0.0, 0.0, 1.0, elevation],
+            [0.0, 0.0, 0.0, 1.0]
+        ]
+        
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=slab, matrix=matrix)
+        
+        # Assign material
+        ifcopenshell.api.run("material.assign_material", self.model, product=slab, material=self.material)
+        
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[slab])
+        
         return slab
 
     def create_generic_element(self, x: float, y: float, width: float, depth: float, height: float, elevation: float, ifc_class="IfcBuildingElementProxy", name="Element"):
@@ -166,6 +222,9 @@ class IfcGenerator:
         
         ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=element, matrix=matrix)
         
+        # Assign material
+        ifcopenshell.api.run("material.assign_material", self.model, product=element, material=self.material)
+        
         # Assign to storey
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[element])
         return element
@@ -175,8 +234,28 @@ class IfcGenerator:
         Mode 1: Simple Rule-Based Extrusion (Baseline).
         Iterates through detections and extrudes them vertically.
         """
-        for det in det_results.get('detections', []):
-            cls = det['class'].lower() # Normalize class name
+        detections = det_results.get('detections', [])
+        if not detections:
+            print("No detections found for IFC generation.")
+            return
+
+        # 1. First pass: Calculate average center to offset the model to (0,0,0)
+        # This ensures the model is visible in the center of the 3D viewer.
+        total_cx = 0
+        total_cy = 0
+        for det in detections:
+            bbox = det['bbox']
+            x_mid = (bbox[0] + bbox[2]) / 2 * scale
+            y_mid = (bbox[1] + bbox[3]) / 2 * scale
+            total_cx += x_mid
+            total_cy += y_mid
+        
+        offset_x = total_cx / len(detections)
+        offset_y = total_cy / len(detections)
+
+        # 2. Second pass: Create elements with offset
+        for det in detections:
+            cls = det['class'].lower() 
             bbox = det['bbox']
             
             x1_m = bbox[0] * scale
@@ -186,8 +265,10 @@ class IfcGenerator:
             
             width = x2_m - x1_m
             depth = y2_m - y1_m
-            cx = x1_m + width / 2
-            cy = - (y1_m + depth / 2)
+            
+            # Centered at (0,0) relative to the whole building
+            cx = (x1_m + width / 2) - offset_x
+            cy = -((y1_m + depth / 2) - offset_y) # Flip Y and apply offset
             
             for i in range(floor_count):
                 elevation = i * height
@@ -196,48 +277,53 @@ class IfcGenerator:
                 if cls in ['column', 'person']: 
                     self.create_column(cx, cy, width, depth, height, elevation=elevation)
                 elif cls in ['door', 'double-door', 'sliding door', 'garage door']:
-                    # Create a placeholder for doors (e.g., shorter height or different color/class if configured)
-                    # For now, we use a generic proxy so it shows up.
-                    # Doors typically sit on the floor, so elevation is correct.
                     self.create_generic_element(cx, cy, width, depth, height * 0.8, elevation, ifc_class="IfcDoor", name=cls.title())
                 elif cls in ['window', 'ventilator']:
-                    # Windows usually have a sill height, let's offset them slightly up
                     sill_height = height * 0.3
                     win_height = height * 0.4
                     self.create_generic_element(cx, cy, width, depth, win_height, elevation + sill_height, ifc_class="IfcWindow", name=cls.title())
                 elif cls in ['staircase', 'stairs']:
                     self.create_generic_element(cx, cy, width, depth, height * 0.5, elevation, ifc_class="IfcStair", name="Staircase")
                 elif cls == 'slab':
-                     self.create_generic_element(cx, cy, width, depth, 0.2, elevation, ifc_class="IfcSlab", name="Slab")
+                     self.create_slab(cx, cy, width, depth, 0.2, elevation)
                 else:
-                    # Catch-all for other detected objects
                     self.create_generic_element(cx, cy, width, depth, height * 0.5, elevation, ifc_class="IfcBuildingElementProxy", name=cls.title())
+        
+        print(f"Generated simple extrusion for {len(detections)} objects across {floor_count} floors.")
 
     def generate_advanced_structure(self, graph_data: dict, scale: float, height: float, floor_count: int):
         """
         Mode 2: Advanced GNN-based Reconstruction.
         Uses graph data (nodes and edges) to generate a connected structure.
-        
-        Args:
-            graph_data (dict): Output from GNN model containing 'nodes' and 'edges'.
         """
-        # 1. Create Nodes (Columns)
+        nodes = graph_data.get('nodes', [])
+        if not nodes:
+            print("No nodes found for advanced structure generation.")
+            return
+
+        # 1. Calculate offset to center the model
+        total_cx = sum(node['x'] for node in nodes) * scale
+        total_cy = sum(node['y'] for node in nodes) * scale
+        offset_x = total_cx / len(nodes)
+        offset_y = total_cy / len(nodes)
+
+        # 2. Create Nodes (Columns)
         node_map = {}
-        for i, node in enumerate(graph_data.get('nodes', [])):
-            cx = node['x'] * scale
-            cy = - node['y'] * scale # Flip Y
+        for i, node in enumerate(nodes):
+            cx = (node['x'] * scale) - offset_x
+            cy = -((node['y'] * scale) - offset_y) # Flip Y
             width = node['width'] * scale
             depth = node['depth'] * scale
             
             for f in range(floor_count):
                 elevation = f * height
-                col = self.create_column(cx, cy, width, depth, height, elevation=elevation)
-                # Store reference to connecting beams if needed (for floor 0)
+                self.create_column(cx, cy, width, depth, height, elevation=elevation)
                 if f == 0:
                     node_map[i] = (cx, cy)
 
-        # 2. Create Edges (Beams)
-        for edge in graph_data.get('edges', []):
+        # 3. Create Edges (Beams)
+        edges = graph_data.get('edges', [])
+        for edge in edges:
             source_idx = edge['source']
             target_idx = edge['target']
             
@@ -245,14 +331,14 @@ class IfcGenerator:
                 p1 = node_map[source_idx]
                 p2 = node_map[target_idx]
                 
-                # Beam dimensions (could be inferred by GNN, defaulting here)
                 beam_width = 0.3
                 beam_depth = 0.5 
                 
                 for f in range(floor_count):
-                    # Beam is usually at the top of the floor height
                     elevation = (f + 1) * height - beam_depth 
                     self.create_beam(p1[0], p1[1], p2[0], p2[1], beam_width, beam_depth, elevation=elevation)
+        
+        print(f"Generated advanced structure with {len(nodes)} nodes and {len(edges)} edges.")
 
     def save(self, path: str):
         self.model.write(path)
