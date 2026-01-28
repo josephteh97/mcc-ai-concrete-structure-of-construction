@@ -6,11 +6,17 @@ import { IFCLoader } from 'web-ifc-three/IFCLoader';
 
 const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
   const { scene, camera } = useThree();
-  const ifcLoader = useRef(new IFCLoader());
+  const ifcLoader = useRef(null);
   const modelRef = useRef(null);
 
   useEffect(() => {
     if (!url) return;
+
+    // Initialize loader once
+    if (!ifcLoader.current) {
+      ifcLoader.current = new IFCLoader();
+      ifcLoader.current.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.36/');
+    }
 
     onLoadStart();
 
@@ -19,9 +25,6 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
       scene.remove(modelRef.current);
       modelRef.current = null;
     }
-
-    // Setup IFC Loader
-    ifcLoader.current.ifcManager.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/');
 
     console.log(`[IFC Viewer] Attempting to load: ${url}`);
 
