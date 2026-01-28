@@ -94,14 +94,39 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
 const Viewer3D = ({ ifcUrl }) => {
   const [loadingStatus, setLoadingStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error'
   const [errorMessage, setErrorMessage] = useState('');
+  const [netInfo, setNetInfo] = useState(null);
 
   console.log(`[Viewer3D] Current Status: ${loadingStatus}, URL: ${ifcUrl}`);
+
+  useEffect(() => {
+    const check = async () => {
+      if (!ifcUrl) {
+        setNetInfo(null);
+        return;
+      }
+      try {
+        const res = await fetch(ifcUrl, { method: 'HEAD' });
+        const info = {
+          ok: res.ok,
+          status: res.status,
+          type: res.headers.get('content-type'),
+          length: res.headers.get('content-length'),
+        };
+        setNetInfo(info);
+        console.log('[IFC Viewer] Preflight HEAD:', info);
+      } catch (e) {
+        setNetInfo({ ok: false, status: 0, type: null, length: null });
+        console.log('[IFC Viewer] Preflight HEAD failed');
+      }
+    };
+    check();
+  }, [ifcUrl]);
 
   return (
     <div className="w-full h-full bg-black relative border-4 border-blue-900">
       {/* Debug Info Overlay */}
       <div className="absolute top-2 left-2 z-30 text-[10px] text-blue-400 font-mono bg-black bg-opacity-50 p-1 pointer-events-none">
-        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()}
+        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()} | {netInfo ? `HEAD ${netInfo.status} ${netInfo.ok ? 'OK' : 'ERR'} ${netInfo.type || ''} ${netInfo.length || ''}` : 'HEAD N/A'}
       </div>
 
       {/* Status Overlay */}

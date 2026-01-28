@@ -103,6 +103,12 @@ function App() {
 
         <div className="flex flex-col gap-3">
             <button
+              onClick={() => setIfcUrl('http://localhost:8000/debug/sample-ifc')}
+              className="w-full py-2 px-4 rounded-md text-white font-medium transition-colors bg-blue-600 hover:bg-blue-700"
+            >
+              Load Sample IFC (Debug)
+            </button>
+            <button
               onClick={() => handleUpload('simple')}
               disabled={!file || loading}
               className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors

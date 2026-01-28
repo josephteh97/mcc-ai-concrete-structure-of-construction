@@ -8,6 +8,7 @@ from typing import Optional
 from processing_unit.vision_model import VisionReasoner
 from processing_unit.system_manager import SystemManager
 from pydantic import BaseModel
+from generating_unit.ifc_generator import IfcGenerator
 
 app = FastAPI(title="MCC AI Construction System")
 
@@ -67,6 +68,20 @@ def download_file(filename: str):
     if os.path.exists(path):
         return FileResponse(path)
     return {"error": "File not found"}
+
+@app.get("/debug/sample-ifc")
+def debug_sample_ifc():
+    from fastapi.responses import FileResponse
+    path = os.path.join(system_manager.output_dir, "sample.ifc")
+    try:
+        gen = IfcGenerator(project_name="DebugSample")
+        gen.create_column(0.0, 0.0, 0.5, 0.5, 3.0, 0.0)
+        gen.save(path)
+    except Exception as e:
+        return {"error": str(e)}
+    if os.path.exists(path):
+        return FileResponse(path)
+    return {"error": "Sample IFC not generated"}
 
 if __name__ == "__main__":
     import uvicorn
