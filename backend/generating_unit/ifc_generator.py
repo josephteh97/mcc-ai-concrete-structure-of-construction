@@ -119,13 +119,41 @@ class IfcGenerator:
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, related_elements=[slab])
         return slab
 
+    def create_generic_element(self, x: float, y: float, width: float, depth: float, height: float, elevation: float, ifc_class="IfcBuildingElementProxy", name="Element"):
+        """
+        Create a generic rectangular element for objects like Doors/Windows/Slabs
+        to ensure they appear in the 3D viewer.
+        """
+        element = ifcopenshell.api.run("root.create_entity", self.model, ifc_class=ifc_class, name=name)
+        
+        # Profile
+        profile = self.model.createIfcRectangleProfileDef(ProfileType="AREA", XDim=width, YDim=depth)
+        
+        # Representation (Extrusion)
+        representation = ifcopenshell.api.run("geometry.add_profile_representation", self.model, 
+                                              context=self.body_context, profile=profile, depth=height)
+        
+        ifcopenshell.api.run("geometry.assign_representation", self.model, product=element, representation=representation)
+        
+        # Placement
+        matrix = ifcopenshell.api.run("geometry.calculate_matrix", self.model, local_placement=None)
+        matrix[0][3] = x
+        matrix[1][3] = y
+        matrix[2][3] = elevation
+        
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=element, matrix=matrix)
+        
+        # Assign to storey
+        ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, related_elements=[element])
+        return element
+
     def generate_simple_extrusion(self, det_results: dict, scale: float, height: float, floor_count: int):
         """
         Mode 1: Simple Rule-Based Extrusion (Baseline).
         Iterates through detections and extrudes them vertically.
         """
         for det in det_results.get('detections', []):
-            cls = det['class']
+            cls = det['class'].lower() # Normalize class name
             bbox = det['bbox']
             
             x1_m = bbox[0] * scale
@@ -138,10 +166,29 @@ class IfcGenerator:
             cx = x1_m + width / 2
             cy = - (y1_m + depth / 2)
             
-            if cls == 'column' or cls == 'person': 
-                for i in range(floor_count):
-                    elevation = i * height
+            for i in range(floor_count):
+                elevation = i * height
+                
+                # Logic for different classes
+                if cls in ['column', 'person']: 
                     self.create_column(cx, cy, width, depth, height, elevation=elevation)
+                elif cls in ['door', 'double-door', 'sliding door', 'garage door']:
+                    # Create a placeholder for doors (e.g., shorter height or different color/class if configured)
+                    # For now, we use a generic proxy so it shows up.
+                    # Doors typically sit on the floor, so elevation is correct.
+                    self.create_generic_element(cx, cy, width, depth, height * 0.8, elevation, ifc_class="IfcDoor", name=cls.title())
+                elif cls in ['window', 'ventilator']:
+                    # Windows usually have a sill height, let's offset them slightly up
+                    sill_height = height * 0.3
+                    win_height = height * 0.4
+                    self.create_generic_element(cx, cy, width, depth, win_height, elevation + sill_height, ifc_class="IfcWindow", name=cls.title())
+                elif cls in ['staircase', 'stairs']:
+                    self.create_generic_element(cx, cy, width, depth, height * 0.5, elevation, ifc_class="IfcStair", name="Staircase")
+                elif cls == 'slab':
+                     self.create_generic_element(cx, cy, width, depth, 0.2, elevation, ifc_class="IfcSlab", name="Slab")
+                else:
+                    # Catch-all for other detected objects
+                    self.create_generic_element(cx, cy, width, depth, height * 0.5, elevation, ifc_class="IfcBuildingElementProxy", name=cls.title())
 
     def generate_advanced_structure(self, graph_data: dict, scale: float, height: float, floor_count: int):
         """
