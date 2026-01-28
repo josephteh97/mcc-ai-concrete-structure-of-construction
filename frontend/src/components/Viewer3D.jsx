@@ -9,6 +9,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
   const { scene, camera } = useThree();
   const ifcLoader = useRef(null);
   const modelRef = useRef(null);
+  const didFallback = useRef(false);
 
   useEffect(() => {
     if (!url) return;
@@ -77,7 +78,52 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError }) => {
       },
       (error) => {
         console.error('[IFC Viewer] Critical Error during loading:', error);
-        onError(`Failed to fetch or parse IFC file: ${error.message || 'Unknown error'}`);
+        const msg = `Failed to fetch or parse IFC file: ${error.message || 'Unknown error'}`;
+        // Fallback: retry with CDN wasm path once if we hit LinkError
+        const isLinkError = String(error).includes('LinkError');
+        if (isLinkError && !didFallback.current) {
+          didFallback.current = true;
+          const altWasmDir = 'https://unpkg.com/web-ifc@0.0.53/';
+          console.log('[IFC Viewer] LinkError detected. Falling back to CDN wasm:', altWasmDir);
+          ifcLoader.current.ifcManager.setWasmPath(altWasmDir);
+          if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
+            ifcLoader.current.ifcManager.useWebWorkers(false);
+          }
+          // Retry once
+          ifcLoader.current.load(
+            url,
+            (retryModel) => {
+              console.log('[IFC Viewer] Retry succeeded with CDN wasm.');
+              // Basic geometry validation
+              let hasGeometry = false;
+              retryModel.traverse((child) => { if (child.isMesh) hasGeometry = true; });
+              if (!hasGeometry) {
+                onError('Model loaded but contains no geometry (retry).');
+                return;
+              }
+              modelRef.current = retryModel;
+              scene.add(retryModel);
+              const box = new THREE.Box3().setFromObject(retryModel);
+              const center = box.getCenter(new THREE.Vector3());
+              const size = box.getSize(new THREE.Vector3());
+              const maxDim = Math.max(size.x, size.y, size.z);
+              const fov = camera.fov * (Math.PI / 180);
+              let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
+              cameraZ *= 3;
+              camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
+              camera.lookAt(center);
+              camera.updateProjectionMatrix();
+              onLoadComplete();
+            },
+            undefined,
+            (retryErr) => {
+              console.error('[IFC Viewer] Retry failed:', retryErr);
+              onError(`Retry failed: ${retryErr.message || 'Unknown error'}`);
+            }
+          );
+          return;
+        }
+        onError(msg);
       }
     );
 
