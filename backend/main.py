@@ -33,6 +33,10 @@ class ChatRequest(BaseModel):
 def read_root():
     return {"message": "Floor Plan AI System Backend is Running (Managed)"}
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "timestamp": str(uuid.uuid4())}
+
 @app.post("/chat")
 async def chat_agent(request: ChatRequest):
     """
