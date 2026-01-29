@@ -6,89 +6,65 @@ import { IFCLoader } from 'web-ifc-three/IFCLoader';
 
 const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPhase }) => {
   const { scene, camera } = useThree();
-  const ifcLoader = useRef(null);
   const modelRef = useRef(null);
-  const finalized = useRef(false);
-  const [wasmVersion, setWasmVersion] = useState('0.0.47');
 
   useEffect(() => {
     if (!url) return;
 
-    // Cleanup previous
+    const loader = new IFCLoader();
+    // Use a single, most compatible version. 0.0.36 is very widely compatible.
+    loader.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.36/');
+    loader.ifcManager.useWebWorkers(false);
+
+    onLoadStart();
+    setPhase('LOADING');
+
     if (modelRef.current) {
       scene.remove(modelRef.current);
       modelRef.current = null;
     }
 
-    const loadModel = async () => {
-      try {
-        console.log(`[IFC Viewer] Initializing loader with WASM ${wasmVersion}`);
-        const loader = new IFCLoader();
-        loader.ifcManager.setWasmPath(`https://unpkg.com/web-ifc@${wasmVersion}/`);
-        ifcLoader.current = loader;
-
-        onLoadStart();
-        setPhase('FETCHING');
-        onProgress(10);
-
-        // Load model
-        const model = await loader.loadAsync(url, (xhr) => {
-          if (xhr.lengthComputable) {
-            const pct = Math.floor((xhr.loaded / xhr.total) * 90); // 0-90% for fetch/load
-            onProgress(pct);
-          }
-        });
-
-        if (model) {
-          console.log('[IFC Viewer] Model loaded successfully');
-          setPhase('RENDERING');
-          onProgress(95);
-
-          modelRef.current = model;
-          scene.add(model);
-
-          // Zoom to fit
-          const box = new THREE.Box3().setFromObject(model);
-          const center = box.getCenter(new THREE.Vector3());
-          const size = box.getSize(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z);
-          const fov = camera.fov * (Math.PI / 180);
-          let cameraZ = Math.abs(maxDim / 2 * Math.tan(fov * 2));
-          cameraZ *= 2.5; 
-
-          camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
-          camera.lookAt(center);
-          camera.updateProjectionMatrix();
-
-          onProgress(100);
-          setPhase('SUCCESS');
-          onLoadComplete();
-          finalized.current = true;
-        }
-      } catch (error) {
-        console.error('[IFC Viewer] Error details:', error);
+    loader.load(
+      url,
+      (ifcModel) => {
+        console.log('[IFC Viewer] Model loaded');
+        setPhase('RENDERING');
+        onProgress(100);
         
-        // Handle version mismatch (LinkError)
-        if (String(error).includes('LinkError') || String(error).includes('import object')) {
-          if (wasmVersion === '0.0.47') {
-            console.warn('[IFC Viewer] Version mismatch detected. Falling back to 0.0.36...');
-            setWasmVersion('0.0.36');
-            return;
-          }
+        modelRef.current = ifcModel;
+        scene.add(ifcModel);
+
+        // Zoom to fit
+        const box = new THREE.Box3().setFromObject(ifcModel);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const distance = maxDim * 2.2 || 20;
+
+        camera.position.set(center.x + distance, center.y + distance, center.z + distance);
+        camera.lookAt(center);
+        camera.updateProjectionMatrix();
+
+        onLoadComplete();
+        setPhase('SUCCESS');
+      },
+      (xhr) => {
+        if (xhr.lengthComputable) {
+          const percent = Math.floor((xhr.loaded / xhr.total) * 100);
+          onProgress(percent);
         }
-        
+      },
+      (error) => {
+        console.error('[IFC Viewer] Load error:', error);
         setPhase('ERROR');
-        onError(error.message || 'Failed to initialize 3D engine');
+        onError(error.message || 'Error loading IFC model');
       }
-    };
-
-    loadModel();
+    );
 
     return () => {
       if (modelRef.current) scene.remove(modelRef.current);
-      finalized.current = false;
     };
-  }, [url, wasmVersion]);
+  }, [url]);
 
   return null;
 };
@@ -100,44 +76,55 @@ const Viewer3D = ({ ifcUrl }) => {
   const [progressPct, setProgressPct] = useState(0);
 
   return (
-    <div className="w-full h-full bg-[#111] relative overflow-hidden">
-      {/* Simple Debug Text */}
-      <div className="absolute top-2 left-2 z-30 text-[9px] text-blue-400 font-mono pointer-events-none opacity-50">
-        3D_VIEWER_V1.3 | PHASE: {phase} | PROG: {progressPct}%
+    <div className="w-full h-full bg-[#1e1e24] relative overflow-hidden rounded-lg shadow-inner">
+      {/* Minimal HUD */}
+      <div className="absolute bottom-4 right-4 z-30 font-mono text-[10px] text-white/30 pointer-events-none">
+        IFC_ENGINE_V1.4 | {phase}
       </div>
 
       {loadingStatus === 'loading' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-40">
-          <div className="flex flex-col items-center gap-3 bg-black bg-opacity-80 p-6 rounded-xl border border-blue-900/50">
-            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <div className="text-white font-bold tracking-tight">Loading 3D Structure...</div>
-            <div className="text-blue-400 font-mono text-xs">{progressPct}% Complete</div>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-2 border-white/10 border-t-white rounded-full animate-spin"></div>
+            <div className="text-white font-medium text-sm tracking-widest">{progressPct}%</div>
           </div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-70 p-6">
-          <div className="bg-red-900 bg-opacity-20 border border-red-500 p-6 rounded-lg max-w-sm text-center">
-            <p className="text-red-400 font-bold mb-4">Rendering Error</p>
-            <p className="text-white text-xs mb-6 opacity-80">{errorMessage}</p>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-900/10 backdrop-blur-sm p-6">
+          <div className="bg-white p-6 rounded-lg shadow-2xl max-w-sm text-center">
+            <p className="text-red-600 font-bold mb-2">Visualization Error</p>
+            <p className="text-gray-600 text-xs mb-4">{errorMessage}</p>
             <button 
               onClick={() => window.location.reload()} 
-              className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors"
+              className="px-4 py-2 bg-gray-900 text-white rounded text-xs font-bold hover:bg-black"
             >
-              Reset Engine
+              RETRY
             </button>
           </div>
         </div>
       )}
 
-      <Canvas camera={{ position: [15, 15, 15], fov: 50 }}>
-        <color attach="background" args={['#111']} />
-        <ambientLight intensity={0.6} />
-        <pointLight position={[10, 10, 10]} intensity={1} />
-        <directionalLight position={[-10, 20, 10]} intensity={0.8} />
+      <Canvas camera={{ position: [20, 20, 20], fov: 45 }}>
+        <color attach="background" args={['#1e1e24']} />
         
-        <Grid infiniteGrid fadeDistance={50} fadeStrength={5} sectionColor="#444" cellColor="#222" />
+        <ambientLight intensity={0.7} />
+        <pointLight position={[10, 10, 10]} intensity={1} />
+        <spotLight position={[-20, 50, 10]} angle={0.15} penumbra={1} intensity={1.5} />
+        
+        {/* Aesthetic Pro Grid */}
+        <Grid 
+          infiniteGrid 
+          fadeDistance={100} 
+          fadeStrength={5} 
+          cellSize={1} 
+          sectionSize={5} 
+          sectionThickness={1.5}
+          sectionColor="#3b82f6" 
+          cellColor="#334155" 
+          cellThickness={0.8}
+        />
         
         {ifcUrl && (
           <IFCModel 
