@@ -12,8 +12,8 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
     if (!url) return;
 
     // LOCAL FIX: Point to the public folder. This eliminates CDN version mismatches.
-    const wasmUrl = '/'; 
-    console.log(`[IFC Engine] v1.9 - Using LOCAL_WASM from public folder`);
+    const wasmUrl = window.location.origin + '/'; 
+    console.log(`[IFC Engine] v1.9 - Using LOCAL_WASM from: ${wasmUrl}`);
 
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath(wasmUrl);
