@@ -235,7 +235,7 @@ class IFCDiagnosticTester:
             # Test 1: Create a column
             print_info("Creating column geometry...")
             column = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcColumn", name="Test Column")
-            ifcopenshell.api.run("spatial.assign_container", ifc_file, relating_structure=storey, product=column)
+            ifcopenshell.api.run("spatial.assign_container", ifc_file, relating_structure=storey, products=[column])
             
             # Create rectangular profile for column
             size = ifc_file.createIfcPositiveLengthMeasure(0.3)  # 300mm x 300mm
@@ -278,7 +278,7 @@ class IFCDiagnosticTester:
             # Test 2: Create a beam
             print_info("Creating beam geometry...")
             beam = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcBeam", name="Test Beam")
-            ifcopenshell.api.run("spatial.assign_container", ifc_file, relating_structure=storey, product=beam)
+            ifcopenshell.api.run("spatial.assign_container", ifc_file, relating_structure=storey, products=[beam])
             
             # Rectangular profile for beam
             beam_width = ifc_file.createIfcPositiveLengthMeasure(0.2)
@@ -320,7 +320,7 @@ class IFCDiagnosticTester:
             # Test 3: Create a slab
             print_info("Creating slab geometry...")
             slab = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcSlab", name="Test Slab")
-            ifcopenshell.api.run("spatial.assign_container", ifc_file, relating_structure=storey, product=slab)
+            ifcopenshell.api.run("spatial.assign_container", ifc_file, relating_structure=storey, products=[slab])
             
             # Create rectangular profile for slab (5m x 5m)
             slab_points = [
@@ -466,7 +466,7 @@ class IFCDiagnosticTester:
                                                      ifc_class="IfcColumn",
                                                      name=f"C-{i}{j}-F{storey_idx+1}")
                         ifcopenshell.api.run("spatial.assign_container", ifc_file,
-                                           relating_structure=storey, product=column)
+                                           relating_structure=storey, products=[column])
                         
                         # Position column
                         x_pos = i * 5.0  # 5m grid
@@ -495,7 +495,7 @@ class IFCDiagnosticTester:
                                                    ifc_class="IfcBeam",
                                                    name=f"B-X{i}{j}-F{storey_idx+1}")
                         ifcopenshell.api.run("spatial.assign_container", ifc_file,
-                                           relating_structure=storey, product=beam)
+                                           relating_structure=storey, products=[beam])
                         beam_count += 1
                 
                 # Beams in Y direction
@@ -505,7 +505,7 @@ class IFCDiagnosticTester:
                                                    ifc_class="IfcBeam",
                                                    name=f"B-Y{i}{j}-F{storey_idx+1}")
                         ifcopenshell.api.run("spatial.assign_container", ifc_file,
-                                           relating_structure=storey, product=beam)
+                                           relating_structure=storey, products=[beam])
                         beam_count += 1
             
             print_success(f"Created {beam_count} beams")
@@ -518,7 +518,7 @@ class IFCDiagnosticTester:
                                            ifc_class="IfcSlab",
                                            name=f"Slab-F{storey_idx+1}")
                 ifcopenshell.api.run("spatial.assign_container", ifc_file,
-                                   relating_structure=storey, product=slab)
+                                   relating_structure=storey, products=[slab])
                 slab_count += 1
             
             print_success(f"Created {slab_count} slabs")
