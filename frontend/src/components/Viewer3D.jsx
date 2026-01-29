@@ -11,43 +11,36 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   useEffect(() => {
     if (!url) return;
 
-    // Use a version of web-ifc that is extremely stable and matches the loader's expectations.
-    // 0.0.36 is a "long-term stable" choice for this specific LinkError issue.
-    const wasmUrl = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/';
-    console.log(`[IFC Engine] Booting v1.8 with STABLE_WASM: ${wasmUrl}`);
+    // LOCAL FIX: Point to the public folder. This eliminates CDN version mismatches.
+    const wasmUrl = '/'; 
+    console.log(`[IFC Engine] v1.9 - Using LOCAL_WASM from public folder`);
 
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath(wasmUrl);
-    
-    // WebWorkers can cause race conditions and LinkErrors in some browser environments.
-    // Disabling them ensures the most predictable loading path.
     loader.ifcManager.useWebWorkers(false);
 
     onLoadStart();
-    setPhase('INIT_WASM');
+    setPhase('INITIALIZING_LOCAL_ENGINE');
 
     if (modelRef.current) {
       scene.remove(modelRef.current);
       modelRef.current = null;
     }
 
-    // Use a standard load() call which is often more reliable than loadAsync in older three-ifc versions.
     loader.load(
       url,
       (ifcModel) => {
-        console.log('[IFC Engine] SUCCESS: Geometry Processed');
         setPhase('SUCCESS');
         onProgress(100);
         
         modelRef.current = ifcModel;
         scene.add(ifcModel);
 
-        // Auto-center camera on the new model
         const box = new THREE.Box3().setFromObject(ifcModel);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = maxDim * 2.5 || 20;
+        const distance = maxDim * 3 || 30;
 
         camera.position.set(center.x + distance, center.y + distance, center.z + distance);
         camera.lookAt(center);
@@ -59,21 +52,14 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
         if (xhr.lengthComputable) {
           const percent = Math.floor((xhr.loaded / xhr.total) * 100);
           onProgress(percent);
-          if (percent === 100) setPhase('BUILDING_MESHES');
-          else setPhase('STREAMING_DATA');
-        } else {
-          setPhase('STREAMING_DATA');
+          if (percent === 100) setPhase('BUILDING_SCENE');
+          else setPhase('DOWNLOADING');
         }
       },
       (err) => {
-        console.error('[IFC Engine] CRITICAL ERROR:', err);
+        console.error('[IFC Engine] Error:', err);
         setPhase('ENGINE_CRASH');
-        
-        let errorMsg = err.message || 'Unknown Engine Error';
-        if (errorMsg.includes('LinkError')) {
-          errorMsg = "WASM LinkError: Version Mismatch. Try a hard refresh (Ctrl+F5).";
-        }
-        onError(errorMsg);
+        onError(err.message || 'WASM Load Error');
       }
     );
 
