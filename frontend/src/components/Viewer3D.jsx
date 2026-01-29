@@ -9,29 +9,12 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   const ifcLoader = useRef(null);
   const modelRef = useRef(null);
   const finalized = useRef(false);
-  const [retryCount, setRetryCount] = useState(0);
-
-  // WASM Versions to try in order
-  const wasmVersions = [
-    'https://unpkg.com/web-ifc@0.0.47/', // Matches package.json
-    'https://unpkg.com/web-ifc@0.0.44/', // Stable fallback
-    'https://unpkg.com/web-ifc@0.0.36/', // Legacy stable
-  ];
+  const [wasmVersion, setWasmVersion] = useState('0.0.47');
 
   useEffect(() => {
     if (!url) return;
 
-    const currentWasm = wasmVersions[retryCount % wasmVersions.length];
-    console.log(`[IFC Viewer] Initializing loader with WASM: ${currentWasm}`);
-
-    // Re-initialize loader on retry to clear internal WASM state
-    ifcLoader.current = new IFCLoader();
-    ifcLoader.current.ifcManager.setWasmPath(currentWasm);
-    ifcLoader.current.ifcManager.useWebWorkers(false);
-
-    onLoadStart();
-    setPhase('LOADING');
-
+    // Cleanup previous
     if (modelRef.current) {
       scene.remove(modelRef.current);
       modelRef.current = null;
@@ -39,50 +22,63 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
 
     const loadModel = async () => {
       try {
-        const ifcModel = await ifcLoader.current.loadAsync(
-          url,
-          (xhr) => {
-            if (xhr.lengthComputable) {
-              const percent = Math.floor((xhr.loaded / xhr.total) * 100);
-              onProgress(percent);
-            }
+        console.log(`[IFC Viewer] Initializing loader with WASM ${wasmVersion}`);
+        const loader = new IFCLoader();
+        loader.ifcManager.setWasmPath(`https://unpkg.com/web-ifc@${wasmVersion}/`);
+        ifcLoader.current = loader;
+
+        onLoadStart();
+        setPhase('FETCHING');
+        onProgress(10);
+
+        // Load model
+        const model = await loader.loadAsync(url, (xhr) => {
+          if (xhr.lengthComputable) {
+            const pct = Math.floor((xhr.loaded / xhr.total) * 90); // 0-90% for fetch/load
+            onProgress(pct);
           }
-        );
+        });
 
-        if (ifcModel) {
-          finalized.current = true;
-          modelRef.current = ifcModel;
-          scene.add(ifcModel);
+        if (model) {
+          console.log('[IFC Viewer] Model loaded successfully');
+          setPhase('RENDERING');
+          onProgress(95);
 
-          const box = new THREE.Box3().setFromObject(ifcModel);
+          modelRef.current = model;
+          scene.add(model);
+
+          // Zoom to fit
+          const box = new THREE.Box3().setFromObject(model);
           const center = box.getCenter(new THREE.Vector3());
           const size = box.getSize(new THREE.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z);
-          const distance = maxDim * 2 || 15;
-          
-          camera.position.set(center.x + distance, center.y + distance, center.z + distance);
+          const fov = camera.fov * (Math.PI / 180);
+          let cameraZ = Math.abs(maxDim / 2 * Math.tan(fov * 2));
+          cameraZ *= 2.5; 
+
+          camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
           camera.lookAt(center);
           camera.updateProjectionMatrix();
 
           onProgress(100);
-          onLoadComplete();
           setPhase('SUCCESS');
+          onLoadComplete();
+          finalized.current = true;
         }
       } catch (error) {
-        console.error('[IFC Viewer] Error:', error);
+        console.error('[IFC Viewer] Error details:', error);
         
-        // If it's a LinkError or version mismatch, try next WASM version
+        // Handle version mismatch (LinkError)
         if (String(error).includes('LinkError') || String(error).includes('import object')) {
-          if (retryCount < wasmVersions.length - 1) {
-            console.warn(`[IFC Viewer] WASM LinkError. Retrying with different version... (${retryCount + 1})`);
-            setPhase(`RETRYING_WASM_${retryCount + 1}`);
-            setRetryCount(prev => prev + 1);
+          if (wasmVersion === '0.0.47') {
+            console.warn('[IFC Viewer] Version mismatch detected. Falling back to 0.0.36...');
+            setWasmVersion('0.0.36');
             return;
           }
         }
         
         setPhase('ERROR');
-        onError(error.message || 'Failed to load 3D model');
+        onError(error.message || 'Failed to initialize 3D engine');
       }
     };
 
@@ -92,7 +88,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
       if (modelRef.current) scene.remove(modelRef.current);
       finalized.current = false;
     };
-  }, [url, retryCount]); // Only re-run if URL or retryCount changes
+  }, [url, wasmVersion]);
 
   return null;
 };
@@ -102,106 +98,60 @@ const Viewer3D = ({ ifcUrl }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [phase, setPhase] = useState('IDLE');
   const [progressPct, setProgressPct] = useState(0);
-  const [fileSize, setFileSize] = useState(null);
-
-  useEffect(() => {
-    if (!ifcUrl) {
-      setLoadingStatus('idle');
-      return;
-    }
-    
-    // Only fetch HEAD for non-blob URLs
-    if (ifcUrl.startsWith('http')) {
-      fetch(ifcUrl, { method: 'HEAD' })
-        .then(res => {
-          const size = res.headers.get('content-length');
-          if (size) setFileSize((parseInt(size) / 1024).toFixed(1) + ' KB');
-        })
-        .catch(() => {});
-    } else {
-      setFileSize('Local Blob');
-    }
-  }, [ifcUrl]);
 
   return (
-    <div className="w-full h-full bg-[#0a0a0f] relative overflow-hidden">
-      {/* HUD Style Overlay */}
-      <div className="absolute top-4 left-4 z-30 font-mono text-[10px] space-y-1 pointer-events-none">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${loadingStatus === 'loading' ? 'bg-blue-500 animate-pulse' : 'bg-green-500'}`}></div>
-          <span className="text-blue-400 font-bold">SYSTEM_3D_VIEWER v1.2</span>
-        </div>
-        <div className="text-slate-500">PHASE: <span className="text-slate-200">{phase}</span></div>
-        <div className="text-slate-500">PROG: <span className="text-slate-200">{progressPct}%</span></div>
-        <div className="text-slate-500">FILE: <span className="text-slate-200">{fileSize || 'Detecting...'}</span></div>
+    <div className="w-full h-full bg-[#111] relative overflow-hidden">
+      {/* Simple Debug Text */}
+      <div className="absolute top-2 left-2 z-30 text-[9px] text-blue-400 font-mono pointer-events-none opacity-50">
+        3D_VIEWER_V1.3 | PHASE: {phase} | PROG: {progressPct}%
       </div>
 
       {loadingStatus === 'loading' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative w-16 h-16">
-              <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
-              <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="text-blue-400 font-mono text-sm tracking-widest uppercase">{phase}...</div>
-              <div className="text-white font-bold text-2xl">{progressPct}%</div>
-            </div>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="flex flex-col items-center gap-3 bg-black bg-opacity-80 p-6 rounded-xl border border-blue-900/50">
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="text-white font-bold tracking-tight">Loading 3D Structure...</div>
+            <div className="text-blue-400 font-mono text-xs">{progressPct}% Complete</div>
           </div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-950/20 backdrop-blur-md p-6">
-          <div className="bg-black/80 border border-red-500/50 p-8 rounded-lg max-w-md w-full flex flex-col items-center gap-6 shadow-2xl">
-            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center">
-              <span className="text-red-500 text-3xl">!</span>
-            </div>
-            <div className="text-center">
-              <h3 className="text-white font-bold text-xl mb-2">Visualization Failed</h3>
-              <p className="text-red-400 text-sm font-mono leading-relaxed">{errorMessage}</p>
-            </div>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-70 p-6">
+          <div className="bg-red-900 bg-opacity-20 border border-red-500 p-6 rounded-lg max-w-sm text-center">
+            <p className="text-red-400 font-bold mb-4">Rendering Error</p>
+            <p className="text-white text-xs mb-6 opacity-80">{errorMessage}</p>
             <button 
               onClick={() => window.location.reload()} 
-              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md transition-all active:scale-95"
+              className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors"
             >
-              RESET ENGINE
+              Reset Engine
             </button>
           </div>
         </div>
       )}
 
-      <Canvas shadows camera={{ position: [20, 20, 20], fov: 45 }} gl={{ antialias: true, alpha: true }}>
-        <color attach="background" args={['#0a0a0f']} />
+      <Canvas camera={{ position: [15, 15, 15], fov: 50 }}>
+        <color attach="background" args={['#111']} />
+        <ambientLight intensity={0.6} />
+        <pointLight position={[10, 10, 10]} intensity={1} />
+        <directionalLight position={[-10, 20, 10]} intensity={0.8} />
         
-        <ambientLight intensity={0.8} />
-        <pointLight position={[10, 10, 10]} intensity={1.5} />
-        
-        <Grid 
-          infiniteGrid 
-          fadeDistance={100} 
-          fadeStrength={5} 
-          cellSize={1} 
-          sectionSize={5} 
-          sectionColor="#334155" 
-          cellColor="#1e293b" 
-        />
+        <Grid infiniteGrid fadeDistance={50} fadeStrength={5} sectionColor="#444" cellColor="#222" />
         
         {ifcUrl && (
-          <React.Suspense fallback={null}>
-            <IFCModel 
-              url={ifcUrl} 
-              setPhase={setPhase}
-              onLoadStart={() => { setLoadingStatus('loading'); setProgressPct(0); }}
-              onLoadComplete={() => { setLoadingStatus('success'); setProgressPct(100); }}
-              onError={(msg) => { setLoadingStatus('error'); setErrorMessage(msg); }}
-              onProgress={(p) => setProgressPct(p)}
-            />
-          </React.Suspense>
+          <IFCModel 
+            url={ifcUrl} 
+            setPhase={setPhase}
+            onLoadStart={() => { setLoadingStatus('loading'); setProgressPct(0); }}
+            onLoadComplete={() => { setLoadingStatus('success'); setProgressPct(100); }}
+            onError={(msg) => { setLoadingStatus('error'); setErrorMessage(msg); }}
+            onProgress={(p) => setProgressPct(p)}
+          />
         )}
         
-        <OrbitControls makeDefault minDistance={2} maxDistance={200} />
-        <Environment preset="night" />
+        <OrbitControls makeDefault />
+        <Environment preset="city" />
       </Canvas>
     </div>
   );
