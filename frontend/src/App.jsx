@@ -8,7 +8,7 @@ import mccImg from '../assets/mcc_img.png';
 function App() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [ifcUrl, setIfcUrl] = useState('http://localhost:8000/download/test_output.ifc');
+  const [ifcUrl, setIfcUrl] = useState(null);
   const [stats, setStats] = useState(null);
   const [constructionParams, setConstructionParams] = useState({
     floor_count: 1,
