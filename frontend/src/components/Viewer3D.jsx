@@ -4,7 +4,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Html, Loader } from '@react-three/drei';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
 
-const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgress }) => {
+const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgress, setPhase }) => {
   const { scene, camera } = useThree();
   const ifcLoader = useRef(null);
   const modelRef = useRef(null);
@@ -18,7 +18,6 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
   const [currentWasm, setCurrentWasm] = useState('https://unpkg.com/web-ifc@0.0.47/');
   const watchdog = useRef(null);
   const finalized = useRef(false);
-  const stuckTimer = useRef(null);
 
   useEffect(() => {
     if (!url) return;
@@ -26,7 +25,6 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
     // Initialize loader once
     if (!ifcLoader.current) {
       ifcLoader.current = new IFCLoader();
-      // Default: use local package asset path
       const wasmDir = currentWasm;
       ifcLoader.current.ifcManager.setWasmPath(wasmDir);
       if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
@@ -36,6 +34,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
     }
 
     onLoadStart();
+    setPhase('FETCHING');
 
     // Cleanup previous model
     if (modelRef.current) {
@@ -48,53 +47,58 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
     if (watchdog.current) {
       clearTimeout(watchdog.current);
     }
+    
+    // Fallback watchdog
     watchdog.current = setTimeout(async () => {
-      try {
-        if (ifcLoader.current && url && !finalized.current) {
+      if (!finalized.current) {
+        console.warn('[IFC Viewer] Watchdog triggered - attempt direct loadAsync');
+        setPhase('TIMEOUT_RETRY');
+        try {
           const retry = await ifcLoader.current.loadAsync(url);
-          let ok = false;
-          retry.traverse((child) => { if (child.isMesh) ok = true; });
-          if (!ok) {
-            onError('Timeout fallback: no geometry');
-            return;
+          if (retry) {
+            finalized.current = true;
+            modelRef.current = retry;
+            scene.add(retry);
+            onLoadComplete();
           }
-          finalized.current = true;
-          modelRef.current = retry;
-          scene.add(retry);
-          const box = new THREE.Box3().setFromObject(retry);
-          const center = box.getCenter(new THREE.Vector3());
-          const size = box.getSize(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z);
-          const fov = camera.fov * (Math.PI / 180);
-          let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
-          cameraZ *= 3;
-          camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
-          camera.lookAt(center);
-          camera.updateProjectionMatrix();
-          onLoadComplete();
+        } catch (e) {
+          onError(`Timeout fallback failed: ${e.message}`);
         }
-      } catch (e) {
-        onError(`Timeout fallback failed: ${e.message || 'Unknown error'}`);
       }
-    }, 5000);
+    }, 10000);
 
     (async () => {
       try {
+        // Step 1: Fetch
+        setPhase('FETCHING');
         const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
+        
+        // Step 2: Parse
+        setPhase('PARSING');
+        onProgress(50);
         const ifcModel = await ifcLoader.current.parse(new Uint8Array(buf));
-        console.log('[IFC Viewer] Model parsed successfully from buffer.');
+        
+        // Step 3: Render
+        setPhase('RENDERING');
+        onProgress(90);
+        
         let hasGeometry = false;
         ifcModel.traverse((child) => {
           if (child.isMesh) hasGeometry = true;
         });
+        
         if (!hasGeometry) {
           onError('Parsed model has no geometry');
           return;
         }
+
         finalized.current = true;
         modelRef.current = ifcModel;
         scene.add(ifcModel);
+        
+        // Auto-center camera
         const box = new THREE.Box3().setFromObject(ifcModel);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
@@ -105,260 +109,104 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
         camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
         camera.lookAt(center);
         camera.updateProjectionMatrix();
+        
+        onProgress(100);
         onLoadComplete();
+        setPhase('SUCCESS');
+        
         if (watchdog.current) {
           clearTimeout(watchdog.current);
           watchdog.current = null;
         }
       } catch (error) {
-        console.error('[IFC Viewer] Critical Error during loading:', error);
-        const msg = `Failed to fetch or parse IFC file: ${error.message || 'Unknown error'}`;
-        // Fallback: retry with CDN wasm path once if we hit LinkError
-        const isLinkError = String(error).includes('LinkError');
-        if (isLinkError) {
+        console.error('[IFC Viewer] Critical Error:', error);
+        setPhase('ERROR');
+        
+        if (String(error).includes('LinkError')) {
           const nextIdx = fallbackIndex.current + 1;
-          const altWasmDir = fallbackList.current[nextIdx];
-          if (!altWasmDir) {
-            onError(msg);
+          const altWasm = fallbackList.current[nextIdx];
+          if (altWasm) {
+            fallbackIndex.current = nextIdx;
+            setCurrentWasm(altWasm);
+            onRetry();
             return;
           }
-          didFallback.current = true;
-          fallbackIndex.current = nextIdx;
-          setCurrentWasm(altWasmDir);
-          console.log('[IFC Viewer] LinkError detected. Trying next WASM:', altWasmDir);
-          ifcLoader.current.ifcManager.setWasmPath(altWasmDir);
-          if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
-            ifcLoader.current.ifcManager.useWebWorkers(false);
-          }
-          onRetry && onRetry();
-          // Retry once
-          (async () => {
-            try {
-              const res2 = await fetch(url);
-              const buf2 = await res2.arrayBuffer();
-              const retryModel = await ifcLoader.current.parse(new Uint8Array(buf2));
-              console.log('[IFC Viewer] Retry succeeded with alternate WASM.');
-              // Basic geometry validation
-              let hasGeometry = false;
-              retryModel.traverse((child) => { if (child.isMesh) hasGeometry = true; });
-              if (!hasGeometry) {
-                onError('Model loaded but contains no geometry (retry).');
-                return;
-              }
-              finalized.current = true;
-              modelRef.current = retryModel;
-              scene.add(retryModel);
-              const box = new THREE.Box3().setFromObject(retryModel);
-              const center = box.getCenter(new THREE.Vector3());
-              const size = box.getSize(new THREE.Vector3());
-              const maxDim = Math.max(size.x, size.y, size.z);
-              const fov = camera.fov * (Math.PI / 180);
-              let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
-              cameraZ *= 3;
-              camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
-              camera.lookAt(center);
-              camera.updateProjectionMatrix();
-              onLoadComplete();
-              if (watchdog.current) {
-                clearTimeout(watchdog.current);
-                watchdog.current = null;
-              }
-            } catch (retryErr) {
-              console.error('[IFC Viewer] Retry failed:', retryErr);
-              const isStillLinkError = String(retryErr).includes('LinkError');
-              if (isStillLinkError) {
-                // recursively try next option
-                const nextIdx2 = fallbackIndex.current + 1;
-                const nextWasm = fallbackList.current[nextIdx2];
-                if (nextWasm) {
-                  fallbackIndex.current = nextIdx2;
-                  setCurrentWasm(nextWasm);
-                  console.log('[IFC Viewer] Retry failed with current WASM. Trying next:', nextWasm);
-                  ifcLoader.current.ifcManager.setWasmPath(nextWasm);
-                  ifcLoader.current.ifcManager.useWebWorkers?.(false);
-                  try {
-                    const res3 = await fetch(url);
-                    const buf3 = await res3.arrayBuffer();
-                    const model2 = await ifcLoader.current.parse(new Uint8Array(buf3));
-                      console.log('[IFC Viewer] Retry succeeded with alternate chain.');
-                      let ok = false;
-                      model2.traverse((child) => { if (child.isMesh) ok = true; });
-                      if (!ok) {
-                        onError('Model loaded but contains no geometry (retry chain).');
-                        return;
-                      }
-                      finalized.current = true;
-                      modelRef.current = model2;
-                      scene.add(model2);
-                      const box = new THREE.Box3().setFromObject(model2);
-                      const center = box.getCenter(new THREE.Vector3());
-                      const size = box.getSize(new THREE.Vector3());
-                      const maxDim = Math.max(size.x, size.y, size.z);
-                      const fov = camera.fov * (Math.PI / 180);
-                      let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
-                      cameraZ *= 3;
-                      camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
-                      camera.lookAt(center);
-                      camera.updateProjectionMatrix();
-                      onLoadComplete();
-                      if (watchdog.current) {
-                        clearTimeout(watchdog.current);
-                        watchdog.current = null;
-                      }
-                  } catch (err3) {
-                    console.error('[IFC Viewer] Retry chain failed:', err3);
-                    onError(`Retry chain failed: ${err3.message || 'Unknown error'}`);
-                  }
-                  return;
-                }
-              }
-              onError(`Retry failed: ${retryErr.message || 'Unknown error'}`);
-            }
-          })();
-          return;
         }
-        onError(msg);
+        onError(error.message || 'Unknown error');
       }
     })();
 
     return () => {
-      if (modelRef.current) {
-        scene.remove(modelRef.current);
-      }
-      if (watchdog.current) {
-        clearTimeout(watchdog.current);
-        watchdog.current = null;
-      }
-      if (stuckTimer.current) {
-        clearTimeout(stuckTimer.current);
-        stuckTimer.current = null;
-      }
+      if (modelRef.current) scene.remove(modelRef.current);
+      if (watchdog.current) clearTimeout(watchdog.current);
       finalized.current = false;
     };
-  }, [url, scene, camera]);
+  }, [url, scene, camera, currentWasm]);
 
   return null;
 };
 
 const Viewer3D = ({ ifcUrl }) => {
-  const [loadingStatus, setLoadingStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error'
+  const [loadingStatus, setLoadingStatus] = useState('idle');
   const [errorMessage, setErrorMessage] = useState('');
-  const [netInfo, setNetInfo] = useState(null);
-  const [attempts, setAttempts] = useState(0);
-  const [errors, setErrors] = useState(0);
-  const [retries, setRetries] = useState(0);
-  const [wasmInfo, setWasmInfo] = useState(null);
-  const [wasmInfoFallback, setWasmInfoFallback] = useState(null);
+  const [phase, setPhase] = useState('IDLE');
   const [progressPct, setProgressPct] = useState(0);
-  const watchdog = useRef(null);
-
-  console.log(`[Viewer3D] Current Status: ${loadingStatus}, URL: ${ifcUrl}`);
+  const [netInfo, setNetInfo] = useState(null);
+  const [wasmInfo, setWasmInfo] = useState(null);
 
   useEffect(() => {
-    const check = async () => {
-      if (!ifcUrl) {
-        setNetInfo(null);
-        return;
-      }
-      try {
-        const res = await fetch(ifcUrl, { method: 'HEAD' });
-        const info = {
-          ok: res.ok,
-          status: res.status,
-          type: res.headers.get('content-type'),
-          length: res.headers.get('content-length'),
-        };
-        setNetInfo(info);
-        console.log('[IFC Viewer] Preflight HEAD:', info);
-      } catch (e) {
-        setNetInfo({ ok: false, status: 0, type: null, length: null });
-        console.log('[IFC Viewer] Preflight HEAD failed');
-      }
-    };
-    check();
+    if (!ifcUrl) return;
+    fetch(ifcUrl, { method: 'HEAD' }).then(res => {
+      setNetInfo({ status: res.status, type: res.headers.get('content-type'), size: res.headers.get('content-length') });
+    }).catch(() => setNetInfo({ status: 'ERR' }));
   }, [ifcUrl]);
-
-  // Probe WASM availability (main)
-  useEffect(() => {
-    const probeWasm = async () => {
-      try {
-        const url = 'https://unpkg.com/web-ifc@0.0.47/web-ifc.wasm';
-        const res = await fetch(url, { method: 'HEAD' });
-        const info = {
-          ok: res.ok,
-          status: res.status,
-          type: res.headers.get('content-type'),
-          length: res.headers.get('content-length'),
-          url,
-        };
-        setWasmInfo(info);
-        console.log('[IFC Viewer] WASM HEAD(main):', info);
-      } catch (e) {
-        setWasmInfo({ ok: false, status: 0, type: null, length: null, url: 'N/A' });
-        console.log('[IFC Viewer] WASM HEAD(main) failed');
-      }
-    };
-    probeWasm();
-  }, []);
 
   return (
     <div className="w-full h-full bg-black relative border-4 border-blue-900">
-      {/* Debug Info Overlay */}
-      <div className="absolute top-2 left-2 z-30 text-[10px] text-blue-400 font-mono bg-black bg-opacity-50 p-1 pointer-events-none">
-        RENDERER_V1.1 | STATUS: {loadingStatus.toUpperCase()} | ATT: {attempts} ERR: {errors} RETRY: {retries} PROG: {progressPct}% | {netInfo ? `HEAD ${netInfo.status} ${netInfo.ok ? 'OK' : 'ERR'} ${netInfo.type || ''} ${netInfo.length || ''}` : 'HEAD N/A'} | WASM {wasmInfo ? `${wasmInfo.status} ${wasmInfo.ok ? 'OK' : 'ERR'} ${wasmInfo.type || ''} ${wasmInfo.length || ''}` : 'N/A'}
+      {/* Granular Debug Overlay */}
+      <div className="absolute top-2 left-2 z-30 text-[10px] text-blue-400 font-mono bg-black/60 p-2 rounded pointer-events-none">
+        <div>3D_VIEWER_PRO | PHASE: {phase} | PROG: {progressPct}%</div>
+        {netInfo && <div>FILE: {netInfo.status} | {netInfo.type} | {netInfo.size} bytes</div>}
+        {ifcUrl && <div className="truncate w-64 text-blue-200">URL: {ifcUrl}</div>}
       </div>
 
-      {/* Status Overlay */}
       {loadingStatus === 'loading' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-50 text-white">
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <p>Loading 3D Model...</p>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 text-white">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="text-lg font-bold">[{phase}] {progressPct}%</div>
+            <div className="text-xs text-blue-300">Processing 3D Data...</div>
           </div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black bg-opacity-70 text-red-400 p-4 text-center">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 text-red-400 p-6 text-center">
           <div className="flex flex-col items-center gap-4">
-            <span className="text-4xl">⚠️</span>
-            <p className="font-bold">Rendering Failed</p>
-            <p className="text-sm max-w-md">{errorMessage}</p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-            >
-              Reload Application
-            </button>
+            <span className="text-5xl">❌</span>
+            <div className="text-xl font-bold">Rendering Error</div>
+            <div className="text-sm bg-red-900/20 p-3 rounded border border-red-900/50 max-w-md">{errorMessage}</div>
+            <button onClick={() => window.location.reload()} className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700">Retry App</button>
           </div>
         </div>
       )}
 
-      <Canvas camera={{ position: [10, 10, 10], fov: 50 }}>
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 5]} intensity={1} />
+      <Canvas camera={{ position: [15, 15, 15], fov: 45 }}>
+        <ambientLight intensity={0.7} />
+        <directionalLight position={[10, 20, 10]} intensity={1.2} />
         <Grid infiniteGrid />
         
         {ifcUrl && (
           <IFCModel 
             url={ifcUrl} 
-            onLoadStart={() => {
-              setLoadingStatus('loading');
-              setErrorMessage('');
-              setAttempts((v) => v + 1);
-            }}
-            onLoadComplete={() => setLoadingStatus('success')}
-            onError={(msg) => {
-              setLoadingStatus('error');
-              setErrorMessage(msg);
-              setErrors((v) => v + 1);
-            }}
-            onRetry={() => setRetries((v) => v + 1)}
+            setPhase={setPhase}
+            onLoadStart={() => { setLoadingStatus('loading'); setProgressPct(0); }}
+            onLoadComplete={() => { setLoadingStatus('success'); setProgressPct(100); }}
+            onError={(msg) => { setLoadingStatus('error'); setErrorMessage(msg); }}
+            onRetry={() => setProgressPct(0)}
             onProgress={(p) => setProgressPct(p)}
           />
         )}
-        
-        
         
         <OrbitControls makeDefault />
         <Environment preset="city" />

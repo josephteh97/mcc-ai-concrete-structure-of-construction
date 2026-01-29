@@ -62,6 +62,22 @@ function App() {
     }
   };
 
+  const handleDirectIfcUpload = (e) => {
+    const directFile = e.target.files[0];
+    if (directFile && directFile.name.endsWith('.ifc')) {
+      const localUrl = URL.createObjectURL(directFile);
+      setIfcUrl(localUrl);
+      setStats({ status: 'success', file_id: directFile.name, detections: 'N/A (Direct)' });
+    } else {
+      alert("Please upload a valid .ifc file");
+    }
+  };
+
+  const loadSampleIfc = () => {
+    setIfcUrl('http://localhost:8000/debug/sample-ifc');
+    setStats({ status: 'success', file_id: 'sample', detections: 'N/A (Sample)' });
+  };
+
   console.log("App Component Rendering - Version 1.1 (Logo + Overlays)");
 
   return (
@@ -123,6 +139,31 @@ function App() {
             >
               {loading ? 'Processing...' : 'Advanced Task (GNN Agent)'}
             </button>
+        </div>
+
+        {/* Debug Section */}
+        <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200">
+          <h3 className="text-sm font-bold text-red-800 mb-2">Debug & Testing</h3>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium text-red-700">Direct IFC Test Upload</label>
+            <input 
+              type="file" 
+              accept=".ifc"
+              onChange={handleDirectIfcUpload}
+              className="block w-full text-xs text-gray-500
+                file:mr-2 file:py-1 file:px-2
+                file:rounded-md file:border-0
+                file:text-xs file:font-semibold
+                file:bg-red-100 file:text-red-700
+                hover:file:bg-red-200"
+            />
+            <button
+              onClick={loadSampleIfc}
+              className="w-full py-1 px-2 rounded-md bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium transition-colors"
+            >
+              Load Backend Sample IFC
+            </button>
+          </div>
         </div>
 
         {stats && (
