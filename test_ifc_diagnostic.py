@@ -165,7 +165,7 @@ class IFCDiagnosticTester:
             # Create site
             print_info("Creating site...")
             site = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcSite", name="Test Site")
-            ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=project, product=site)
+            ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=project, products=[site])
             
             # Save file
             output_file = self.output_dir / "test_basic.ifc"
@@ -224,13 +224,13 @@ class IFCDiagnosticTester:
             
             # Create site and building
             site = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcSite", name="Site")
-            ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=project, product=site)
+            ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=project, products=[site])
             
             building = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcBuilding", name="Building")
-            ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=site, product=building)
+            ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=site, products=[building])
             
             storey = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcBuildingStorey", name="Ground Floor")
-            ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=building, product=storey)
+            ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=building, products=[storey])
             
             # Test 1: Create a column
             print_info("Creating column geometry...")
@@ -427,13 +427,13 @@ class IFCDiagnosticTester:
                                        ifc_class="IfcSite", 
                                        name="Construction Site")
             ifcopenshell.api.run("aggregate.assign_object", ifc_file, 
-                                relating_object=project, product=site)
+                                relating_object=project, products=[site])
             
             building = ifcopenshell.api.run("root.create_entity", ifc_file,
                                            ifc_class="IfcBuilding",
                                            name="Main Building")
             ifcopenshell.api.run("aggregate.assign_object", ifc_file,
-                                relating_object=site, product=building)
+                                relating_object=site, products=[building])
             
             # Create multiple storeys
             storeys = []
@@ -442,7 +442,7 @@ class IFCDiagnosticTester:
                                              ifc_class="IfcBuildingStorey",
                                              name=f"Floor {i+1}")
                 ifcopenshell.api.run("aggregate.assign_object", ifc_file,
-                                    relating_object=building, product=storey)
+                                    relating_object=building, products=[storey])
                 
                 # Set elevation
                 origin = ifc_file.createIfcCartesianPoint((0., 0., i * 3.5))
