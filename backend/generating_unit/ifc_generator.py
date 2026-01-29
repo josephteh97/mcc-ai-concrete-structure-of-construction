@@ -35,16 +35,16 @@ class IfcGenerator:
         # Set Storey Elevation
         self.storey.Elevation = 0.0
 
-        # Assign Placements to hierarchy (Critical for rendering)
+        # Reset all spatial placements to identity
         identity_matrix = [
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0]
         ]
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[self.site], matrix=identity_matrix)
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[self.building], matrix=identity_matrix)
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[self.storey], matrix=identity_matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=self.site, matrix=identity_matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=self.building, matrix=identity_matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=self.storey, matrix=identity_matrix)
 
         # Assign hierarchy
         ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.project, products=[self.site])
@@ -73,18 +73,17 @@ class IfcGenerator:
                                               context=self.body_context, profile=profile, depth=height)
         
         # Assign representation to column
-        ifcopenshell.api.run("geometry.assign_representation", self.model, products=[column], representation=representation)
+        ifcopenshell.api.run("geometry.assign_representation", self.model, product=column, representation=representation)
         
         # Place the column
-        # Matrix is [x, y, z]
         matrix = [
             [1.0, 0.0, 0.0, x],
             [0.0, 1.0, 0.0, y],
-            [0.0, 0.0, 1.0, elevation],
+            [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0]
         ]
         
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[column], matrix=matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=column, matrix=matrix)
         
         # Assign material
         ifcopenshell.api.run("material.assign_material", self.model, products=[column], material=self.material)
@@ -117,7 +116,7 @@ class IfcGenerator:
         representation = ifcopenshell.api.run("geometry.add_profile_representation", self.model, 
                                               context=self.body_context, profile=profile, depth=depth)
         
-        ifcopenshell.api.run("geometry.assign_representation", self.model, products=[beam], representation=representation)
+        ifcopenshell.api.run("geometry.assign_representation", self.model, product=beam, representation=representation)
         
         # Placement
         # We need to place the center of the beam at the midpoint and rotate it.
@@ -140,7 +139,7 @@ class IfcGenerator:
             [0.0,    0.0,   0.0, 1.0]
         ]
         
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[beam], matrix=matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=beam, matrix=matrix)
         
         # Assign material
         ifcopenshell.api.run("material.assign_material", self.model, products=[beam], material=self.material)
@@ -159,7 +158,7 @@ class IfcGenerator:
         representation = ifcopenshell.api.run("geometry.add_profile_representation", self.model, 
                                               context=self.body_context, profile=profile, depth=thickness)
         
-        ifcopenshell.api.run("geometry.assign_representation", self.model, products=[slab], representation=representation)
+        ifcopenshell.api.run("geometry.assign_representation", self.model, product=slab, representation=representation)
         
         matrix = [
             [1.0, 0.0, 0.0, x],
@@ -168,7 +167,7 @@ class IfcGenerator:
             [0.0, 0.0, 0.0, 1.0]
         ]
         
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[slab], matrix=matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=slab, matrix=matrix)
         
         # Assign material
         ifcopenshell.api.run("material.assign_material", self.model, products=[slab], material=self.material)
@@ -191,28 +190,16 @@ class IfcGenerator:
         representation = ifcopenshell.api.run("geometry.add_profile_representation", self.model, 
                                               context=self.body_context, profile=profile, depth=height)
         
-        ifcopenshell.api.run("geometry.assign_representation", self.model, products=[element], representation=representation)
+        ifcopenshell.api.run("geometry.assign_representation", self.model, product=element, representation=representation)
         
         # Placement
         # Fix: Manually construct the matrix instead of using the API if it's missing in this version
         # 4x4 Identity Matrix with translation
         # [ 1, 0, 0, x ]
         # [ 0, 1, 0, y ]
-        # [ 0, 0, 1, z ]
+        # [ 0, 0, 1, elevation ]
         # [ 0, 0, 0, 1 ]
         
-        # However, ifcopenshell.api.run("geometry.edit_object_placement") expects a certain format or 
-        # we can just use "geometry.edit_object_placement" with a dictionary if supported, 
-        # or creating the placement manually.
-        
-        # Let's try to see if we can just pass the matrix directly to edit_object_placement if it supports it, 
-        # OR use a simpler way: create placement manually.
-        
-        # Correct approach for 0.8.4+ if calculate_matrix is missing:
-        # Just create the local placement.
-        
-        # But wait, edit_object_placement usually takes a matrix.
-        # If calculate_matrix is missing, we can provide the matrix as a nested list.
         matrix = [
             [1.0, 0.0, 0.0, x],
             [0.0, 1.0, 0.0, y],
@@ -220,7 +207,7 @@ class IfcGenerator:
             [0.0, 0.0, 0.0, 1.0]
         ]
         
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[element], matrix=matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, product=element, matrix=matrix)
         
         # Assign material
         ifcopenshell.api.run("material.assign_material", self.model, products=[element], material=self.material)
