@@ -238,23 +238,21 @@ class IFCDiagnosticTester:
             ifcopenshell.api.run("spatial.assign_container", ifc_file, relating_structure=storey, products=[column])
             
             # Create rectangular profile for column
-            size = ifc_file.createIfcPositiveLengthMeasure(0.3)  # 300mm x 300mm
             profile = ifc_file.createIfcRectangleProfileDef(
                 "AREA",
                 "300x300",
                 None,
-                size,
-                size
+                0.3,
+                0.3
             )
             
             # Create extrusion
-            height = ifc_file.createIfcPositiveLengthMeasure(3.0)  # 3m high
             direction = ifc_file.createIfcDirection((0., 0., 1.))
             extrusion = ifc_file.createIfcExtrudedAreaSolid(
                 profile,
                 None,
                 direction,
-                height
+                3.0
             )
             
             # Create representation
@@ -281,23 +279,20 @@ class IFCDiagnosticTester:
             ifcopenshell.api.run("spatial.assign_container", ifc_file, relating_structure=storey, products=[beam])
             
             # Rectangular profile for beam
-            beam_width = ifc_file.createIfcPositiveLengthMeasure(0.2)
-            beam_height = ifc_file.createIfcPositiveLengthMeasure(0.4)
             beam_profile = ifc_file.createIfcRectangleProfileDef(
                 "AREA",
                 "200x400",
                 None,
-                beam_width,
-                beam_height
+                0.2,
+                0.4
             )
             
-            beam_length = ifc_file.createIfcPositiveLengthMeasure(5.0)  # 5m long
             beam_direction = ifc_file.createIfcDirection((1., 0., 0.))  # Along X-axis
             beam_extrusion = ifc_file.createIfcExtrudedAreaSolid(
                 beam_profile,
                 None,
                 beam_direction,
-                beam_length
+                5.0
             )
             
             beam_representation = ifc_file.createIfcShapeRepresentation(
@@ -334,13 +329,12 @@ class IFCDiagnosticTester:
             slab_profile = ifc_file.createIfcArbitraryClosedProfileDef("AREA", None, slab_polyline)
             
             # Extrude slab thickness (200mm)
-            slab_thickness = ifc_file.createIfcPositiveLengthMeasure(0.2)
             slab_direction = ifc_file.createIfcDirection((0., 0., 1.))
             slab_extrusion = ifc_file.createIfcExtrudedAreaSolid(
                 slab_profile,
                 None,
                 slab_direction,
-                slab_thickness
+                0.2
             )
             
             slab_representation = ifc_file.createIfcShapeRepresentation(
