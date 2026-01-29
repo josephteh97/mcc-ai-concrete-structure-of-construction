@@ -11,82 +11,73 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   useEffect(() => {
     if (!url) return;
 
-    // USE JSDELIVR - Much more reliable for WASM content-types than unpkg
-    // Hard-locked to 0.0.47 to match package.json
-    const wasmUrl = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.47/';
-    console.log(`[IFC Engine] Booting with JSDelivr: ${wasmUrl}`);
+    // Use a version of web-ifc that is extremely stable and matches the loader's expectations.
+    // 0.0.36 is a "long-term stable" choice for this specific LinkError issue.
+    const wasmUrl = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/';
+    console.log(`[IFC Engine] Booting v1.8 with STABLE_WASM: ${wasmUrl}`);
 
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath(wasmUrl);
-    loader.ifcManager.useWebWorkers(false); // Forced stable single-thread
+    
+    // WebWorkers can cause race conditions and LinkErrors in some browser environments.
+    // Disabling them ensures the most predictable loading path.
+    loader.ifcManager.useWebWorkers(false);
 
     onLoadStart();
-    setPhase('INIT');
+    setPhase('INIT_WASM');
 
     if (modelRef.current) {
       scene.remove(modelRef.current);
       modelRef.current = null;
     }
 
-    const abortController = new AbortController();
-    const timeout = setTimeout(() => {
-      setPhase('HANG_DETECTED');
-      console.warn('[IFC Engine] Parsing is taking too long. Check console for WASM errors.');
-    }, 15000);
-
-    (async () => {
-      try {
-        setPhase('FETCHING');
-        const model = await loader.loadAsync(url, (xhr) => {
-          if (xhr.lengthComputable) {
-            const pct = Math.floor((xhr.loaded / xhr.total) * 100);
-            onProgress(pct);
-            if (pct === 100) setPhase('PARSING_GEOMETRY');
-          }
-        });
-
-        clearTimeout(timeout);
-
-        if (model) {
-          console.log('[IFC Engine] SUCCESS: Model added to scene');
-          setPhase('FINALIZING');
-          
-          modelRef.current = model;
-          scene.add(model);
-
-          // Advanced Auto-Focus
-          const box = new THREE.Box3().setFromObject(model);
-          const center = new THREE.Vector3();
-          box.getCenter(center);
-          const size = new THREE.Vector3();
-          box.getSize(size);
-          
-          const maxDim = Math.max(size.x, size.y, size.z) || 10;
-          const dist = maxDim * 3;
-          
-          camera.position.set(center.x + dist, center.y + dist, center.z + dist);
-          camera.lookAt(center);
-          camera.updateProjectionMatrix();
-
-          onProgress(100);
-          setPhase('READY');
-          onLoadComplete();
-        }
-      } catch (err) {
-        clearTimeout(timeout);
-        console.error('[IFC Engine] CRITICAL:', err);
-        setPhase('CRASHED');
+    // Use a standard load() call which is often more reliable than loadAsync in older three-ifc versions.
+    loader.load(
+      url,
+      (ifcModel) => {
+        console.log('[IFC Engine] SUCCESS: Geometry Processed');
+        setPhase('SUCCESS');
+        onProgress(100);
         
-        let msg = err.message || 'Engine Crash';
-        if (msg.includes('LinkError') || msg.includes('import object')) {
-          msg = "WASM BINARY MISMATCH (LinkError). Please HARD REFRESH (Ctrl+F5).";
+        modelRef.current = ifcModel;
+        scene.add(ifcModel);
+
+        // Auto-center camera on the new model
+        const box = new THREE.Box3().setFromObject(ifcModel);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const distance = maxDim * 2.5 || 20;
+
+        camera.position.set(center.x + distance, center.y + distance, center.z + distance);
+        camera.lookAt(center);
+        camera.updateProjectionMatrix();
+
+        onLoadComplete();
+      },
+      (xhr) => {
+        if (xhr.lengthComputable) {
+          const percent = Math.floor((xhr.loaded / xhr.total) * 100);
+          onProgress(percent);
+          if (percent === 100) setPhase('BUILDING_MESHES');
+          else setPhase('STREAMING_DATA');
+        } else {
+          setPhase('STREAMING_DATA');
         }
-        onError(msg);
+      },
+      (err) => {
+        console.error('[IFC Engine] CRITICAL ERROR:', err);
+        setPhase('ENGINE_CRASH');
+        
+        let errorMsg = err.message || 'Unknown Engine Error';
+        if (errorMsg.includes('LinkError')) {
+          errorMsg = "WASM LinkError: Version Mismatch. Try a hard refresh (Ctrl+F5).";
+        }
+        onError(errorMsg);
       }
-    })();
+    );
 
     return () => {
-      clearTimeout(timeout);
       if (modelRef.current) scene.remove(modelRef.current);
     };
   }, [url]);
@@ -101,89 +92,69 @@ const Viewer3D = ({ ifcUrl }) => {
   const [progressPct, setProgressPct] = useState(0);
 
   return (
-    <div className="w-full h-full bg-[#050505] relative overflow-hidden">
+    <div className="w-full h-full bg-[#08080a] relative overflow-hidden rounded-md border border-slate-800">
       {/* PROFESSIONAL DIAGNOSTIC HUD */}
-      <div className="absolute top-6 left-6 z-30 font-mono text-[10px] space-y-2 pointer-events-none">
-        <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full ${loadingStatus === 'loading' ? 'bg-blue-500 animate-pulse shadow-[0_0_15px_#3b82f6]' : 'bg-green-500 shadow-[0_0_15px_#22c55e]'}`}></div>
-          <span className="text-white font-black tracking-widest uppercase">IFC_ENGINE_v1.7</span>
+      <div className="absolute top-4 left-4 z-30 font-mono text-[9px] text-blue-400/80 space-y-1 pointer-events-none">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${loadingStatus === 'loading' ? 'bg-blue-500 animate-pulse' : 'bg-green-500 shadow-[0_0_8px_#22c55e]'}`}></div>
+          <span className="font-bold tracking-widest">3D_ENGINE_CORE_V1.8</span>
         </div>
-        <div className="flex gap-6">
-          <div className="text-blue-500/40">STATE: <span className="text-blue-400 font-bold">{phase}</span></div>
-          <div className="text-blue-500/40">BUFFER: <span className="text-blue-400 font-bold">{progressPct}%</span></div>
-        </div>
+        <div>PHASE: <span className="text-white">{phase}</span></div>
+        <div>BUFFER: <span className="text-white">{progressPct}%</span></div>
       </div>
 
       {loadingStatus === 'loading' && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-xl">
-          <div className="relative w-32 h-32">
-            {/* Pulsing Core */}
-            <div className="absolute inset-0 bg-blue-600/30 rounded-full animate-ping"></div>
-            <div className="absolute inset-4 bg-blue-500/20 rounded-full animate-pulse blur-md"></div>
-            
-            {/* Main Spinner */}
-            <svg className="w-full h-full rotate-[-90deg]">
-              <circle
-                cx="64" cy="64" r="60"
-                stroke="currentColor" strokeWidth="4" fill="transparent"
-                className="text-blue-900/30"
-              />
-              <circle
-                cx="64" cy="64" r="60"
-                stroke="currentColor" strokeWidth="4" fill="transparent"
-                strokeDasharray={377}
-                strokeDashoffset={377 - (377 * progressPct) / 100}
-                className="text-blue-500 transition-all duration-500 ease-out"
-              />
-            </svg>
-            
-            <div className="absolute inset-0 flex items-center justify-center text-white font-black text-2xl tracking-tighter">
-              {progressPct}%
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70 backdrop-blur-md">
+          <div className="relative w-20 h-20">
+            {/* The "Flashing Blue Light" Pulse */}
+            <div className="absolute inset-0 bg-blue-500/20 rounded-full animate-ping"></div>
+            <div className="relative w-full h-full border-2 border-blue-500/20 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
             </div>
           </div>
-          <div className="mt-12 text-center space-y-2">
-            <div className="text-blue-400 font-mono tracking-[0.6em] text-[10px] uppercase animate-pulse">{phase}</div>
-            <div className="text-white/20 font-mono text-[8px] uppercase">Processing_Geometric_Vertices</div>
+          <div className="mt-6 flex flex-col items-center gap-1">
+            <div className="text-blue-400 font-mono text-[10px] tracking-[0.4em] uppercase animate-pulse">{phase}</div>
+            <div className="text-white font-bold text-3xl">{progressPct}%</div>
           </div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-950/40 backdrop-blur-2xl">
-          <div className="bg-black border-t-4 border-red-600 p-12 shadow-[0_30px_100px_rgba(0,0,0,1)] max-w-md w-full">
-            <h2 className="text-red-600 font-black text-3xl mb-2 tracking-tighter uppercase italic">Engine_Failure</h2>
-            <div className="h-1 w-20 bg-red-600 mb-6"></div>
-            <div className="bg-red-600/5 p-6 font-mono text-[11px] text-red-400 border border-red-600/20 mb-10 uppercase leading-relaxed">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/90 p-8 text-center">
+          <div className="flex flex-col items-center gap-4 max-w-sm">
+            <div className="text-red-500 text-4xl animate-bounce">!</div>
+            <div className="text-white font-bold tracking-tighter text-xl">SYSTEM_FAILURE_DETECTED</div>
+            <div className="text-red-400/80 font-mono text-[10px] bg-red-950/20 p-4 rounded border border-red-900/50">
               {errorMessage}
             </div>
             <button 
               onClick={() => window.location.reload()} 
-              className="w-full py-5 bg-red-600 hover:bg-red-700 text-white font-black text-xs tracking-[0.3em] transition-all active:scale-95"
+              className="mt-4 px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-xs tracking-widest uppercase transition-all"
             >
-              RESTART_HARDWARE_INSTANCE
+              Force Reboot
             </button>
           </div>
         </div>
       )}
 
-      <Canvas shadows camera={{ position: [50, 50, 50], fov: 45 }}>
-        <color attach="background" args={['#050505']} />
+      <Canvas camera={{ position: [30, 30, 30], fov: 45 }}>
+        <color attach="background" args={['#08080a']} />
         
-        <ambientLight intensity={1.2} />
-        <pointLight position={[100, 100, 100]} intensity={2} />
-        <spotLight position={[-100, 200, 100]} angle={0.3} intensity={4} penumbra={1} castShadow />
+        <ambientLight intensity={1.0} />
+        <pointLight position={[20, 30, 20]} intensity={1.5} />
+        <directionalLight position={[-20, 40, 20]} intensity={0.8} />
         
-        {/* MAXIMUM VISIBILITY AESTHETIC GRID */}
+        {/* ULTRA-AESTHETIC HIGH-VISIBILITY PRO GRID */}
         <Grid 
           infiniteGrid 
-          fadeDistance={600} // VISIBLE TO THE HORIZON
-          fadeStrength={0.5}   // ALMOST NO FADE AT BACK
+          fadeDistance={400} 
+          fadeStrength={0.3}    
           cellSize={1} 
-          sectionSize={10} 
-          sectionThickness={3}
-          sectionColor="#3b82f6" // Electric Blue
-          cellColor="#1e3a8a"    // Deep Navy
-          cellThickness={1.5}
+          sectionSize={5} 
+          sectionThickness={2}
+          sectionColor="#4f46e5" // Vivid Indigo
+          cellColor="#1e1b4b"    // Deep Navy
+          cellThickness={1}
         />
         
         {ifcUrl && (
@@ -197,8 +168,8 @@ const Viewer3D = ({ ifcUrl }) => {
           />
         )}
         
-        <OrbitControls makeDefault minDistance={1} maxDistance={2000} />
-        <Environment preset="city" />
+        <OrbitControls makeDefault minDistance={2} maxDistance={1000} />
+        <Environment preset="night" />
       </Canvas>
     </div>
   );
