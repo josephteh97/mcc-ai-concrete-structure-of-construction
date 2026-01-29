@@ -11,16 +11,17 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   useEffect(() => {
     if (!url) return;
 
-    // LOCAL FIX: Point to the public folder. This eliminates CDN version mismatches.
-    const wasmUrl = window.location.origin + '/'; 
-    console.log(`[IFC Engine] v1.9 - Using LOCAL_WASM from: ${wasmUrl}`);
+    // DEFINITIVE VERSION LOCK: web-ifc-three 0.0.126 MUST use web-ifc 0.0.36 WASM.
+    // Using JSDelivr for reliable binary delivery.
+    const wasmUrl = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/';
+    console.log(`[IFC Engine] Locking version to 0.0.36: ${wasmUrl}`);
 
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath(wasmUrl);
     loader.ifcManager.useWebWorkers(false);
 
     onLoadStart();
-    setPhase('INITIALIZING_LOCAL_ENGINE');
+    setPhase('INITIALIZING_ENGINE');
 
     if (modelRef.current) {
       scene.remove(modelRef.current);
@@ -40,7 +41,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = maxDim * 3 || 30;
+        const distance = maxDim * 2.5 || 25;
 
         camera.position.set(center.x + distance, center.y + distance, center.z + distance);
         camera.lookAt(center);
@@ -52,14 +53,14 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
         if (xhr.lengthComputable) {
           const percent = Math.floor((xhr.loaded / xhr.total) * 100);
           onProgress(percent);
-          if (percent === 100) setPhase('BUILDING_SCENE');
+          if (percent === 100) setPhase('PROCESSING_GEOMETRY');
           else setPhase('DOWNLOADING');
         }
       },
       (err) => {
         console.error('[IFC Engine] Error:', err);
-        setPhase('ENGINE_CRASH');
-        onError(err.message || 'WASM Load Error');
+        setPhase('ERROR');
+        onError(err.message || 'Engine LinkError');
       }
     );
 
@@ -78,69 +79,67 @@ const Viewer3D = ({ ifcUrl }) => {
   const [progressPct, setProgressPct] = useState(0);
 
   return (
-    <div className="w-full h-full bg-[#08080a] relative overflow-hidden rounded-md border border-slate-800">
-      {/* PROFESSIONAL DIAGNOSTIC HUD */}
-      <div className="absolute top-4 left-4 z-30 font-mono text-[9px] text-blue-400/80 space-y-1 pointer-events-none">
+    <div className="w-full h-full bg-[#050505] relative overflow-hidden">
+      {/* HUD Overlay */}
+      <div className="absolute top-4 left-4 z-30 font-mono text-[10px] space-y-1 pointer-events-none">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${loadingStatus === 'loading' ? 'bg-blue-500 animate-pulse' : 'bg-green-500 shadow-[0_0_8px_#22c55e]'}`}></div>
-          <span className="font-bold tracking-widest">3D_ENGINE_CORE_V1.8</span>
+          <div className={`w-2 h-2 rounded-full ${loadingStatus === 'loading' ? 'bg-cyan-400 animate-pulse shadow-[0_0_10px_#22d3ee]' : 'bg-green-500 shadow-[0_0_10px_#22c55e]'}`}></div>
+          <span className="text-white font-bold tracking-widest uppercase">IFC_ENGINE_CORE_V2.0</span>
         </div>
-        <div>PHASE: <span className="text-white">{phase}</span></div>
-        <div>BUFFER: <span className="text-white">{progressPct}%</span></div>
+        <div className="text-slate-500">SYSTEM_PHASE: <span className="text-cyan-400 font-bold">{phase}</span></div>
+        <div className="text-slate-500">DATA_FLOW: <span className="text-cyan-400 font-bold">{progressPct}%</span></div>
       </div>
 
       {loadingStatus === 'loading' && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70 backdrop-blur-md">
-          <div className="relative w-20 h-20">
-            {/* The "Flashing Blue Light" Pulse */}
-            <div className="absolute inset-0 bg-blue-500/20 rounded-full animate-ping"></div>
-            <div className="relative w-full h-full border-2 border-blue-500/20 rounded-full flex items-center justify-center">
-              <div className="w-12 h-12 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="relative w-32 h-32">
+            <div className="absolute inset-0 bg-cyan-500/20 rounded-full animate-ping"></div>
+            <div className="relative w-full h-full border-4 border-cyan-500/30 rounded-full flex items-center justify-center">
+              <div className="w-20 h-20 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center text-white font-black text-xl">
+              {progressPct}%
             </div>
           </div>
-          <div className="mt-6 flex flex-col items-center gap-1">
-            <div className="text-blue-400 font-mono text-[10px] tracking-[0.4em] uppercase animate-pulse">{phase}</div>
-            <div className="text-white font-bold text-3xl">{progressPct}%</div>
-          </div>
+          <div className="mt-8 text-cyan-400 font-mono tracking-[0.5em] animate-pulse text-xs uppercase font-bold">{phase}</div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/90 p-8 text-center">
-          <div className="flex flex-col items-center gap-4 max-w-sm">
-            <div className="text-red-500 text-4xl animate-bounce">!</div>
-            <div className="text-white font-bold tracking-tighter text-xl">SYSTEM_FAILURE_DETECTED</div>
-            <div className="text-red-400/80 font-mono text-[10px] bg-red-950/20 p-4 rounded border border-red-900/50">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-950/40 backdrop-blur-md">
+          <div className="bg-black border-2 border-red-600 p-10 rounded-none shadow-[0_0_50px_rgba(220,38,38,0.3)] max-w-md w-full">
+            <h2 className="text-red-600 font-black text-2xl mb-4 tracking-tighter italic">CORE_CRASH_DETECTED</h2>
+            <div className="bg-red-600/10 p-4 font-mono text-[10px] text-red-400 border border-red-600/20 mb-8 uppercase leading-relaxed">
               {errorMessage}
             </div>
             <button 
               onClick={() => window.location.reload()} 
-              className="mt-4 px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-xs tracking-widest uppercase transition-all"
+              className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black text-sm tracking-widest transition-all"
             >
-              Force Reboot
+              RESTART_SYSTEM_INSTANCE
             </button>
           </div>
         </div>
       )}
 
-      <Canvas camera={{ position: [30, 30, 30], fov: 45 }}>
-        <color attach="background" args={['#08080a']} />
+      <Canvas shadows camera={{ position: [40, 40, 40], fov: 45 }}>
+        <color attach="background" args={['#050505']} />
         
-        <ambientLight intensity={1.0} />
-        <pointLight position={[20, 30, 20]} intensity={1.5} />
-        <directionalLight position={[-20, 40, 20]} intensity={0.8} />
+        <ambientLight intensity={1.5} />
+        <pointLight position={[50, 50, 50]} intensity={2} />
+        <spotLight position={[-50, 100, 50]} angle={0.3} intensity={3} penumbra={1} castShadow />
         
-        {/* ULTRA-AESTHETIC HIGH-VISIBILITY PRO GRID */}
+        {/* ULTRA-AESTHETIC HIGH-CONTRAST CYBER GRID */}
         <Grid 
           infiniteGrid 
-          fadeDistance={400} 
-          fadeStrength={0.3}    
+          fadeDistance={1500} // VISIBLE FOREVER
+          fadeStrength={0}    // ZERO FADE - BRIGHT TO THE EDGE
           cellSize={1} 
           sectionSize={5} 
-          sectionThickness={2}
-          sectionColor="#4f46e5" // Vivid Indigo
-          cellColor="#1e1b4b"    // Deep Navy
-          cellThickness={1}
+          sectionThickness={3}
+          sectionColor="#00f2ff" // Electric Cyan
+          cellColor="#003b44"    // Dark Matrix Teal
+          cellThickness={1.5}
         />
         
         {ifcUrl && (
@@ -154,8 +153,8 @@ const Viewer3D = ({ ifcUrl }) => {
           />
         )}
         
-        <OrbitControls makeDefault minDistance={2} maxDistance={1000} />
-        <Environment preset="night" />
+        <OrbitControls makeDefault minDistance={2} maxDistance={2000} />
+        <Environment preset="city" />
       </Canvas>
     </div>
   );
