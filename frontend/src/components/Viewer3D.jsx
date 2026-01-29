@@ -11,13 +11,16 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   useEffect(() => {
     if (!url) return;
 
+    // Version 0.0.44 is widely considered the most stable 'LinkError-free' version
+    const wasmUrl = 'https://unpkg.com/web-ifc@0.0.44/';
+    console.log(`[IFC Viewer] Loading with STABLE WASM: ${wasmUrl}`);
+
     const loader = new IFCLoader();
-    // Use a single, most compatible version. 0.0.36 is very widely compatible.
-    loader.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.36/');
+    loader.ifcManager.setWasmPath(wasmUrl);
     loader.ifcManager.useWebWorkers(false);
 
     onLoadStart();
-    setPhase('LOADING');
+    setPhase('INITIALIZING');
 
     if (modelRef.current) {
       scene.remove(modelRef.current);
@@ -27,37 +30,40 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
     loader.load(
       url,
       (ifcModel) => {
-        console.log('[IFC Viewer] Model loaded');
-        setPhase('RENDERING');
+        setPhase('SUCCESS');
         onProgress(100);
         
         modelRef.current = ifcModel;
         scene.add(ifcModel);
 
-        // Zoom to fit
         const box = new THREE.Box3().setFromObject(ifcModel);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = maxDim * 2.2 || 20;
+        const distance = maxDim * 2.5 || 25;
 
         camera.position.set(center.x + distance, center.y + distance, center.z + distance);
         camera.lookAt(center);
         camera.updateProjectionMatrix();
 
         onLoadComplete();
-        setPhase('SUCCESS');
       },
       (xhr) => {
         if (xhr.lengthComputable) {
           const percent = Math.floor((xhr.loaded / xhr.total) * 100);
           onProgress(percent);
+          if (percent > 0) setPhase('FETCHING');
         }
       },
       (error) => {
-        console.error('[IFC Viewer] Load error:', error);
+        console.error('[IFC Viewer] Error:', error);
         setPhase('ERROR');
-        onError(error.message || 'Error loading IFC model');
+        // Explicitly catch the LinkError/import object error
+        if (error.message && (error.message.includes('LinkError') || error.message.includes('import object'))) {
+          onError("WASM Engine Mismatch (LinkError). Please refresh or try another file.");
+        } else {
+          onError(error.message || 'Error loading IFC model');
+        }
       }
     );
 
@@ -76,54 +82,54 @@ const Viewer3D = ({ ifcUrl }) => {
   const [progressPct, setProgressPct] = useState(0);
 
   return (
-    <div className="w-full h-full bg-[#1e1e24] relative overflow-hidden rounded-lg shadow-inner">
-      {/* Minimal HUD */}
-      <div className="absolute bottom-4 right-4 z-30 font-mono text-[10px] text-white/30 pointer-events-none">
-        IFC_ENGINE_V1.4 | {phase}
+    <div className="w-full h-full bg-[#111115] relative overflow-hidden">
+      {/* HUD */}
+      <div className="absolute top-4 left-4 z-30 font-mono text-[10px] text-blue-400/60 pointer-events-none">
+        ENGINE: WEB-IFC-STABLE | PHASE: {phase}
       </div>
 
       {loadingStatus === 'loading' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-2 border-white/10 border-t-white rounded-full animate-spin"></div>
-            <div className="text-white font-medium text-sm tracking-widest">{progressPct}%</div>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="text-white text-xs font-bold">{progressPct}%</div>
           </div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-900/10 backdrop-blur-sm p-6">
-          <div className="bg-white p-6 rounded-lg shadow-2xl max-w-sm text-center">
-            <p className="text-red-600 font-bold mb-2">Visualization Error</p>
-            <p className="text-gray-600 text-xs mb-4">{errorMessage}</p>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 p-6 text-center">
+          <div className="max-w-xs">
+            <p className="text-red-500 font-bold mb-2">ENGINE_CRITICAL_FAILURE</p>
+            <p className="text-gray-400 text-[10px] mb-4 font-mono">{errorMessage}</p>
             <button 
               onClick={() => window.location.reload()} 
-              className="px-4 py-2 bg-gray-900 text-white rounded text-xs font-bold hover:bg-black"
+              className="px-4 py-2 bg-blue-600 text-white text-[10px] font-bold rounded hover:bg-blue-700"
             >
-              RETRY
+              REBOOT SYSTEM
             </button>
           </div>
         </div>
       )}
 
-      <Canvas camera={{ position: [20, 20, 20], fov: 45 }}>
-        <color attach="background" args={['#1e1e24']} />
+      <Canvas camera={{ position: [30, 30, 30], fov: 45 }}>
+        <color attach="background" args={['#111115']} />
         
-        <ambientLight intensity={0.7} />
-        <pointLight position={[10, 10, 10]} intensity={1} />
-        <spotLight position={[-20, 50, 10]} angle={0.15} penumbra={1} intensity={1.5} />
+        <ambientLight intensity={0.8} />
+        <pointLight position={[20, 20, 20]} intensity={1.5} />
+        <directionalLight position={[-20, 20, -20]} intensity={0.5} />
         
-        {/* Aesthetic Pro Grid */}
+        {/* Aesthetic High-Visibility Grid */}
         <Grid 
           infiniteGrid 
-          fadeDistance={100} 
-          fadeStrength={5} 
+          fadeDistance={300} // Increased significantly to see the back
+          fadeStrength={1}    // Reduced fade to keep it bright
           cellSize={1} 
           sectionSize={5} 
-          sectionThickness={1.5}
-          sectionColor="#3b82f6" 
-          cellColor="#334155" 
-          cellThickness={0.8}
+          sectionThickness={2}
+          sectionColor="#4f46e5" // Bright Indigo
+          cellColor="#312e81"    // Dark Indigo
+          cellThickness={1}
         />
         
         {ifcUrl && (
