@@ -11,10 +11,10 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   useEffect(() => {
     if (!url) return;
 
-    // THE DEFINITIVE FIX FOR 'JA' ERROR:
-    // Version 0.0.44 is the ONLY version that consistently avoids the minified 'ja' LinkError.
-    const wasmUrl = 'https://unpkg.com/web-ifc@0.0.44/';
-    console.log(`[IFC Engine] v2.1 - EMERGENCY_BYPASS: Using STABLE_44: ${wasmUrl}`);
+    // LOCAL WASM FIX: Point to the public folder where we confirmed the file exists.
+    // This is the most robust way to avoid CDN/LinkError issues.
+    const wasmUrl = '/'; 
+    console.log(`[IFC Engine] v2.2 - BOOTING FROM LOCAL PUBLIC: ${wasmUrl}`);
 
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath(wasmUrl);
@@ -31,17 +31,27 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
     loader.load(
       url,
       (ifcModel) => {
+        console.log('[IFC Engine] Model loaded into memory');
         setPhase('SUCCESS');
         onProgress(100);
+        
+        // Ensure standard material for visibility
+        ifcModel.material = new THREE.MeshPhongMaterial({ 
+          color: 0xcccccc, 
+          side: THREE.DoubleSide,
+          transparent: false,
+          opacity: 1
+        });
         
         modelRef.current = ifcModel;
         scene.add(ifcModel);
 
+        // Zoom to fit
         const box = new THREE.Box3().setFromObject(ifcModel);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = maxDim * 2.5 || 25;
+        const distance = (maxDim * 3) || 50;
 
         camera.position.set(center.x + distance, center.y + distance, center.z + distance);
         camera.lookAt(center);
@@ -53,19 +63,14 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
         if (xhr.lengthComputable) {
           const percent = Math.floor((xhr.loaded / xhr.total) * 100);
           onProgress(percent);
-          if (percent === 100) setPhase('FINAL_MESH_BUILD');
-          else setPhase('RAW_DATA_FETCH');
+          if (percent === 100) setPhase('BUILDING_MESH');
+          else setPhase('DOWNLOADING');
         }
       },
       (err) => {
         console.error('[IFC Engine] CRITICAL:', err);
         setPhase('ENGINE_CRASH');
-        // Explicitly catch the LinkError 'ja'
-        if (err.message && err.message.includes('ja')) {
-          onError("CRITICAL: LinkError 'ja'. Browser memory is corrupted. PLEASE CLOSE THE TAB AND OPEN A NEW ONE.");
-        } else {
-          onError(err.message || 'Engine LinkError');
-        }
+        onError(err.message || 'Engine LinkError');
       }
     );
 
