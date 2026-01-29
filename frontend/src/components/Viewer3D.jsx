@@ -11,8 +11,8 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   useEffect(() => {
     if (!url) return;
 
-    // Version 0.0.44 is widely considered the most stable 'LinkError-free' version
-    const wasmUrl = 'https://unpkg.com/web-ifc@0.0.44/';
+    // Use 0.0.36 - the most robust version that usually avoids Ja/Ja LinkErrors
+    const wasmUrl = 'https://unpkg.com/web-ifc@0.0.36/';
     console.log(`[IFC Viewer] Loading with STABLE WASM: ${wasmUrl}`);
 
     const loader = new IFCLoader();
@@ -27,9 +27,11 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
       modelRef.current = null;
     }
 
+    // Use standard load with better phase tracking
     loader.load(
       url,
       (ifcModel) => {
+        console.log('[IFC Viewer] Parse Success');
         setPhase('SUCCESS');
         onProgress(100);
         
@@ -52,18 +54,19 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
         if (xhr.lengthComputable) {
           const percent = Math.floor((xhr.loaded / xhr.total) * 100);
           onProgress(percent);
-          if (percent > 0) setPhase('FETCHING');
+          if (percent === 100) {
+            setPhase('PARSING');
+          } else if (percent > 0) {
+            setPhase('FETCHING');
+          }
+        } else {
+          setPhase('FETCHING');
         }
       },
       (error) => {
         console.error('[IFC Viewer] Error:', error);
         setPhase('ERROR');
-        // Explicitly catch the LinkError/import object error
-        if (error.message && (error.message.includes('LinkError') || error.message.includes('import object'))) {
-          onError("WASM Engine Mismatch (LinkError). Please refresh or try another file.");
-        } else {
-          onError(error.message || 'Error loading IFC model');
-        }
+        onError(error.message || 'Error loading IFC model');
       }
     );
 
@@ -82,53 +85,68 @@ const Viewer3D = ({ ifcUrl }) => {
   const [progressPct, setProgressPct] = useState(0);
 
   return (
-    <div className="w-full h-full bg-[#111115] relative overflow-hidden">
-      {/* HUD */}
-      <div className="absolute top-4 left-4 z-30 font-mono text-[10px] text-blue-400/60 pointer-events-none">
-        ENGINE: WEB-IFC-STABLE | PHASE: {phase}
+    <div className="w-full h-full bg-[#0a0a0f] relative overflow-hidden">
+      {/* HUD Overlay */}
+      <div className="absolute top-4 left-4 z-30 font-mono text-[10px] space-y-1 pointer-events-none">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${loadingStatus === 'loading' ? 'bg-blue-500 animate-pulse' : 'bg-green-500'}`}></div>
+          <span className="text-blue-400 font-bold tracking-widest uppercase">IFC_ENGINE_CORE_v1.5</span>
+        </div>
+        <div className="text-slate-500">SYSTEM_PHASE: <span className="text-blue-200">{phase}</span></div>
+        <div className="text-slate-500">DATA_FLOW: <span className="text-blue-200">{progressPct}%</span></div>
       </div>
 
       {loadingStatus === 'loading' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <div className="text-white text-xs font-bold">{progressPct}%</div>
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative">
+            {/* The "Flashing Blue Light" Pulse Effect */}
+            <div className="absolute inset-0 w-24 h-24 bg-blue-500/20 rounded-full animate-ping"></div>
+            <div className="relative w-24 h-24 flex items-center justify-center border-4 border-blue-500/30 rounded-full">
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          </div>
+          <div className="mt-8 flex flex-col items-center gap-1">
+            <div className="text-blue-400 font-mono text-sm tracking-[0.3em] uppercase animate-pulse">{phase}</div>
+            <div className="text-white font-black text-4xl">{progressPct}%</div>
           </div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 p-6 text-center">
-          <div className="max-w-xs">
-            <p className="text-red-500 font-bold mb-2">ENGINE_CRITICAL_FAILURE</p>
-            <p className="text-gray-400 text-[10px] mb-4 font-mono">{errorMessage}</p>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-950/20 backdrop-blur-md p-6">
+          <div className="bg-black/80 border border-red-500/50 p-8 rounded-lg max-w-md w-full flex flex-col items-center gap-6">
+            <div className="text-red-500 text-5xl">⚠</div>
+            <div className="text-center">
+              <h3 className="text-white font-bold text-xl mb-2">CRITICAL_SYSTEM_ERROR</h3>
+              <p className="text-red-400 text-sm font-mono">{errorMessage}</p>
+            </div>
             <button 
               onClick={() => window.location.reload()} 
-              className="px-4 py-2 bg-blue-600 text-white text-[10px] font-bold rounded hover:bg-blue-700"
+              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md transition-all active:scale-95"
             >
-              REBOOT SYSTEM
+              REBOOT_ENGINE
             </button>
           </div>
         </div>
       )}
 
       <Canvas camera={{ position: [30, 30, 30], fov: 45 }}>
-        <color attach="background" args={['#111115']} />
+        <color attach="background" args={['#0a0a0f']} />
         
         <ambientLight intensity={0.8} />
         <pointLight position={[20, 20, 20]} intensity={1.5} />
-        <directionalLight position={[-20, 20, -20]} intensity={0.5} />
+        <spotLight position={[-20, 50, 20]} angle={0.2} intensity={2} penumbra={1} castShadow />
         
-        {/* Aesthetic High-Visibility Grid */}
+        {/* Bright, High-Aesthetic Indigo Grid */}
         <Grid 
           infiniteGrid 
-          fadeDistance={300} // Increased significantly to see the back
-          fadeStrength={1}    // Reduced fade to keep it bright
+          fadeDistance={250} 
+          fadeStrength={1}    
           cellSize={1} 
           sectionSize={5} 
           sectionThickness={2}
-          sectionColor="#4f46e5" // Bright Indigo
-          cellColor="#312e81"    // Dark Indigo
+          sectionColor="#4f46e5" 
+          cellColor="#1e1b4b"    
           cellThickness={1}
         />
         
@@ -143,7 +161,7 @@ const Viewer3D = ({ ifcUrl }) => {
           />
         )}
         
-        <OrbitControls makeDefault />
+        <OrbitControls makeDefault minDistance={2} maxDistance={500} />
         <Environment preset="city" />
       </Canvas>
     </div>
