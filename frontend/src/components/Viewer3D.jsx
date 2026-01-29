@@ -4,27 +4,34 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Html, Loader } from '@react-three/drei';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
 
-const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgress, setPhase }) => {
+const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPhase }) => {
   const { scene, camera } = useThree();
   const ifcLoader = useRef(null);
   const modelRef = useRef(null);
   const finalized = useRef(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // WASM Versions to try in order
+  const wasmVersions = [
+    'https://unpkg.com/web-ifc@0.0.47/', // Matches package.json
+    'https://unpkg.com/web-ifc@0.0.44/', // Stable fallback
+    'https://unpkg.com/web-ifc@0.0.36/', // Legacy stable
+  ];
 
   useEffect(() => {
     if (!url) return;
 
-    // Initialize loader
-    if (!ifcLoader.current) {
-      ifcLoader.current = new IFCLoader();
-      // Use 0.0.36 as default - often more stable with web-ifc-three
-      ifcLoader.current.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.36/');
-      ifcLoader.current.ifcManager.useWebWorkers(false);
-    }
+    const currentWasm = wasmVersions[retryCount % wasmVersions.length];
+    console.log(`[IFC Viewer] Initializing loader with WASM: ${currentWasm}`);
+
+    // Re-initialize loader on retry to clear internal WASM state
+    ifcLoader.current = new IFCLoader();
+    ifcLoader.current.ifcManager.setWasmPath(currentWasm);
+    ifcLoader.current.ifcManager.useWebWorkers(false);
 
     onLoadStart();
     setPhase('LOADING');
 
-    // Cleanup previous model
     if (modelRef.current) {
       scene.remove(modelRef.current);
       modelRef.current = null;
@@ -32,12 +39,6 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
 
     const loadModel = async () => {
       try {
-        setPhase('LOADING');
-        onProgress(10);
-        
-        console.log(`[IFC Viewer] Loading via loadAsync: ${url}`);
-        
-        // Use loadAsync directly
         const ifcModel = await ifcLoader.current.loadAsync(
           url,
           (xhr) => {
@@ -48,22 +49,17 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
           }
         );
 
-        setPhase('RENDERING');
-        onProgress(90);
-
         if (ifcModel) {
           finalized.current = true;
           modelRef.current = ifcModel;
           scene.add(ifcModel);
 
-          // Center and zoom
           const box = new THREE.Box3().setFromObject(ifcModel);
           const center = box.getCenter(new THREE.Vector3());
           const size = box.getSize(new THREE.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z);
+          const distance = maxDim * 2 || 15;
           
-          // Move camera to a good distance
-          const distance = maxDim * 2;
           camera.position.set(center.x + distance, center.y + distance, center.z + distance);
           camera.lookAt(center);
           camera.updateProjectionMatrix();
@@ -71,11 +67,20 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
           onProgress(100);
           onLoadComplete();
           setPhase('SUCCESS');
-        } else {
-          throw new Error("Model loaded but is empty");
         }
       } catch (error) {
-        console.error('[IFC Viewer] Load Error:', error);
+        console.error('[IFC Viewer] Error:', error);
+        
+        // If it's a LinkError or version mismatch, try next WASM version
+        if (String(error).includes('LinkError') || String(error).includes('import object')) {
+          if (retryCount < wasmVersions.length - 1) {
+            console.warn(`[IFC Viewer] WASM LinkError. Retrying with different version... (${retryCount + 1})`);
+            setPhase(`RETRYING_WASM_${retryCount + 1}`);
+            setRetryCount(prev => prev + 1);
+            return;
+          }
+        }
+        
         setPhase('ERROR');
         onError(error.message || 'Failed to load 3D model');
       }
@@ -87,7 +92,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
       if (modelRef.current) scene.remove(modelRef.current);
       finalized.current = false;
     };
-  }, [url, scene, camera]);
+  }, [url, retryCount]); // Only re-run if URL or retryCount changes
 
   return null;
 };
@@ -166,13 +171,11 @@ const Viewer3D = ({ ifcUrl }) => {
         </div>
       )}
 
-      <Canvas shadows camera={{ position: [20, 20, 20], fov: 45 }}>
+      <Canvas shadows camera={{ position: [20, 20, 20], fov: 45 }} gl={{ antialias: true, alpha: true }}>
         <color attach="background" args={['#0a0a0f']} />
-        <fog attach="fog" args={['#0a0a0f', 50, 150]} />
         
         <ambientLight intensity={0.8} />
-        <pointLight position={[10, 10, 10]} intensity={1.5} castShadow />
-        <spotLight position={[-10, 20, 10]} angle={0.15} penumbra={1} intensity={2} castShadow />
+        <pointLight position={[10, 10, 10]} intensity={1.5} />
         
         <Grid 
           infiniteGrid 
@@ -180,22 +183,24 @@ const Viewer3D = ({ ifcUrl }) => {
           fadeStrength={5} 
           cellSize={1} 
           sectionSize={5} 
-          sectionColor="#1e293b" 
-          cellColor="#0f172a" 
+          sectionColor="#334155" 
+          cellColor="#1e293b" 
         />
         
         {ifcUrl && (
-          <IFCModel 
-            url={ifcUrl} 
-            setPhase={setPhase}
-            onLoadStart={() => { setLoadingStatus('loading'); setProgressPct(0); }}
-            onLoadComplete={() => { setLoadingStatus('success'); setProgressPct(100); }}
-            onError={(msg) => { setLoadingStatus('error'); setErrorMessage(msg); }}
-            onProgress={(p) => setProgressPct(p)}
-          />
+          <React.Suspense fallback={null}>
+            <IFCModel 
+              url={ifcUrl} 
+              setPhase={setPhase}
+              onLoadStart={() => { setLoadingStatus('loading'); setProgressPct(0); }}
+              onLoadComplete={() => { setLoadingStatus('success'); setProgressPct(100); }}
+              onError={(msg) => { setLoadingStatus('error'); setErrorMessage(msg); }}
+              onProgress={(p) => setProgressPct(p)}
+            />
+          </React.Suspense>
         )}
         
-        <OrbitControls makeDefault minDistance={2} maxDistance={100} />
+        <OrbitControls makeDefault minDistance={2} maxDistance={200} />
         <Environment preset="night" />
       </Canvas>
     </div>
