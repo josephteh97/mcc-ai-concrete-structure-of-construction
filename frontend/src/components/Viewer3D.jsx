@@ -8,33 +8,21 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
   const { scene, camera } = useThree();
   const ifcLoader = useRef(null);
   const modelRef = useRef(null);
-  const didFallback = useRef(false);
-  const fallbackIndex = useRef(0);
-  const fallbackList = useRef([
-    'https://unpkg.com/web-ifc@0.0.47/',
-    'https://unpkg.com/web-ifc@0.0.53/',
-    'https://unpkg.com/web-ifc@0.0.36/',
-  ]);
-  const [currentWasm, setCurrentWasm] = useState('https://unpkg.com/web-ifc@0.0.47/');
-  const watchdog = useRef(null);
   const finalized = useRef(false);
 
   useEffect(() => {
     if (!url) return;
 
-    // Initialize loader once
+    // Initialize loader
     if (!ifcLoader.current) {
       ifcLoader.current = new IFCLoader();
-      const wasmDir = currentWasm;
-      ifcLoader.current.ifcManager.setWasmPath(wasmDir);
-      if (typeof ifcLoader.current.ifcManager.useWebWorkers === 'function') {
-        ifcLoader.current.ifcManager.useWebWorkers(false);
-      }
-      console.log(`[IFC Viewer] WASM dir: ${wasmDir}`);
+      // Use 0.0.36 as default - often more stable with web-ifc-three
+      ifcLoader.current.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.36/');
+      ifcLoader.current.ifcManager.useWebWorkers(false);
     }
 
     onLoadStart();
-    setPhase('FETCHING');
+    setPhase('LOADING');
 
     // Cleanup previous model
     if (modelRef.current) {
@@ -42,106 +30,64 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onRetry, onProgre
       modelRef.current = null;
     }
 
-    console.log(`[IFC Viewer] Attempting to load: ${url}`);
-
-    if (watchdog.current) {
-      clearTimeout(watchdog.current);
-    }
-    
-    // Fallback watchdog
-    watchdog.current = setTimeout(async () => {
-      if (!finalized.current) {
-        console.warn('[IFC Viewer] Watchdog triggered - attempt direct loadAsync');
-        setPhase('TIMEOUT_RETRY');
-        try {
-          const retry = await ifcLoader.current.loadAsync(url);
-          if (retry) {
-            finalized.current = true;
-            modelRef.current = retry;
-            scene.add(retry);
-            onLoadComplete();
-          }
-        } catch (e) {
-          onError(`Timeout fallback failed: ${e.message}`);
-        }
-      }
-    }, 10000);
-
-    (async () => {
+    const loadModel = async () => {
       try {
-        // Step 1: Fetch
-        setPhase('FETCHING');
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
+        setPhase('LOADING');
+        onProgress(10);
         
-        // Step 2: Parse
-        setPhase('PARSING');
-        onProgress(50);
-        const ifcModel = await ifcLoader.current.parse(new Uint8Array(buf));
+        console.log(`[IFC Viewer] Loading via loadAsync: ${url}`);
         
-        // Step 3: Render
+        // Use loadAsync directly
+        const ifcModel = await ifcLoader.current.loadAsync(
+          url,
+          (xhr) => {
+            if (xhr.lengthComputable) {
+              const percent = Math.floor((xhr.loaded / xhr.total) * 100);
+              onProgress(percent);
+            }
+          }
+        );
+
         setPhase('RENDERING');
         onProgress(90);
-        
-        let hasGeometry = false;
-        ifcModel.traverse((child) => {
-          if (child.isMesh) hasGeometry = true;
-        });
-        
-        if (!hasGeometry) {
-          onError('Parsed model has no geometry');
-          return;
-        }
 
-        finalized.current = true;
-        modelRef.current = ifcModel;
-        scene.add(ifcModel);
-        
-        // Auto-center camera
-        const box = new THREE.Box3().setFromObject(ifcModel);
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const fov = camera.fov * (Math.PI / 180);
-        let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
-        cameraZ *= 3;
-        camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
-        camera.lookAt(center);
-        camera.updateProjectionMatrix();
-        
-        onProgress(100);
-        onLoadComplete();
-        setPhase('SUCCESS');
-        
-        if (watchdog.current) {
-          clearTimeout(watchdog.current);
-          watchdog.current = null;
+        if (ifcModel) {
+          finalized.current = true;
+          modelRef.current = ifcModel;
+          scene.add(ifcModel);
+
+          // Center and zoom
+          const box = new THREE.Box3().setFromObject(ifcModel);
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+          
+          // Move camera to a good distance
+          const distance = maxDim * 2;
+          camera.position.set(center.x + distance, center.y + distance, center.z + distance);
+          camera.lookAt(center);
+          camera.updateProjectionMatrix();
+
+          onProgress(100);
+          onLoadComplete();
+          setPhase('SUCCESS');
+        } else {
+          throw new Error("Model loaded but is empty");
         }
       } catch (error) {
-        console.error('[IFC Viewer] Critical Error:', error);
+        console.error('[IFC Viewer] Load Error:', error);
         setPhase('ERROR');
-        
-        if (String(error).includes('LinkError')) {
-          const nextIdx = fallbackIndex.current + 1;
-          const altWasm = fallbackList.current[nextIdx];
-          if (altWasm) {
-            fallbackIndex.current = nextIdx;
-            setCurrentWasm(altWasm);
-            onRetry();
-            return;
-          }
-        }
-        onError(error.message || 'Unknown error');
+        onError(error.message || 'Failed to load 3D model');
       }
-    })();
+    };
+
+    loadModel();
 
     return () => {
       if (modelRef.current) scene.remove(modelRef.current);
-      if (watchdog.current) clearTimeout(watchdog.current);
       finalized.current = false;
     };
-  }, [url, scene, camera, currentWasm]);
+  }, [url, scene, camera]);
 
   return null;
 };
@@ -151,50 +97,92 @@ const Viewer3D = ({ ifcUrl }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [phase, setPhase] = useState('IDLE');
   const [progressPct, setProgressPct] = useState(0);
-  const [netInfo, setNetInfo] = useState(null);
-  const [wasmInfo, setWasmInfo] = useState(null);
+  const [fileSize, setFileSize] = useState(null);
 
   useEffect(() => {
-    if (!ifcUrl) return;
-    fetch(ifcUrl, { method: 'HEAD' }).then(res => {
-      setNetInfo({ status: res.status, type: res.headers.get('content-type'), size: res.headers.get('content-length') });
-    }).catch(() => setNetInfo({ status: 'ERR' }));
+    if (!ifcUrl) {
+      setLoadingStatus('idle');
+      return;
+    }
+    
+    // Only fetch HEAD for non-blob URLs
+    if (ifcUrl.startsWith('http')) {
+      fetch(ifcUrl, { method: 'HEAD' })
+        .then(res => {
+          const size = res.headers.get('content-length');
+          if (size) setFileSize((parseInt(size) / 1024).toFixed(1) + ' KB');
+        })
+        .catch(() => {});
+    } else {
+      setFileSize('Local Blob');
+    }
   }, [ifcUrl]);
 
   return (
-    <div className="w-full h-full bg-black relative border-4 border-blue-900">
-      {/* Granular Debug Overlay */}
-      <div className="absolute top-2 left-2 z-30 text-[10px] text-blue-400 font-mono bg-black/60 p-2 rounded pointer-events-none">
-        <div>3D_VIEWER_PRO | PHASE: {phase} | PROG: {progressPct}%</div>
-        {netInfo && <div>FILE: {netInfo.status} | {netInfo.type} | {netInfo.size} bytes</div>}
-        {ifcUrl && <div className="truncate w-64 text-blue-200">URL: {ifcUrl}</div>}
+    <div className="w-full h-full bg-[#0a0a0f] relative overflow-hidden">
+      {/* HUD Style Overlay */}
+      <div className="absolute top-4 left-4 z-30 font-mono text-[10px] space-y-1 pointer-events-none">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${loadingStatus === 'loading' ? 'bg-blue-500 animate-pulse' : 'bg-green-500'}`}></div>
+          <span className="text-blue-400 font-bold">SYSTEM_3D_VIEWER v1.2</span>
+        </div>
+        <div className="text-slate-500">PHASE: <span className="text-slate-200">{phase}</span></div>
+        <div className="text-slate-500">PROG: <span className="text-slate-200">{progressPct}%</span></div>
+        <div className="text-slate-500">FILE: <span className="text-slate-200">{fileSize || 'Detecting...'}</span></div>
       </div>
 
       {loadingStatus === 'loading' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 text-white">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <div className="text-lg font-bold">[{phase}] {progressPct}%</div>
-            <div className="text-xs text-blue-300">Processing 3D Data...</div>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative w-16 h-16">
+              <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="text-blue-400 font-mono text-sm tracking-widest uppercase">{phase}...</div>
+              <div className="text-white font-bold text-2xl">{progressPct}%</div>
+            </div>
           </div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 text-red-400 p-6 text-center">
-          <div className="flex flex-col items-center gap-4">
-            <span className="text-5xl">❌</span>
-            <div className="text-xl font-bold">Rendering Error</div>
-            <div className="text-sm bg-red-900/20 p-3 rounded border border-red-900/50 max-w-md">{errorMessage}</div>
-            <button onClick={() => window.location.reload()} className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700">Retry App</button>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-950/20 backdrop-blur-md p-6">
+          <div className="bg-black/80 border border-red-500/50 p-8 rounded-lg max-w-md w-full flex flex-col items-center gap-6 shadow-2xl">
+            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center">
+              <span className="text-red-500 text-3xl">!</span>
+            </div>
+            <div className="text-center">
+              <h3 className="text-white font-bold text-xl mb-2">Visualization Failed</h3>
+              <p className="text-red-400 text-sm font-mono leading-relaxed">{errorMessage}</p>
+            </div>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md transition-all active:scale-95"
+            >
+              RESET ENGINE
+            </button>
           </div>
         </div>
       )}
 
-      <Canvas camera={{ position: [15, 15, 15], fov: 45 }}>
-        <ambientLight intensity={0.7} />
-        <directionalLight position={[10, 20, 10]} intensity={1.2} />
-        <Grid infiniteGrid />
+      <Canvas shadows camera={{ position: [20, 20, 20], fov: 45 }}>
+        <color attach="background" args={['#0a0a0f']} />
+        <fog attach="fog" args={['#0a0a0f', 50, 150]} />
+        
+        <ambientLight intensity={0.8} />
+        <pointLight position={[10, 10, 10]} intensity={1.5} castShadow />
+        <spotLight position={[-10, 20, 10]} angle={0.15} penumbra={1} intensity={2} castShadow />
+        
+        <Grid 
+          infiniteGrid 
+          fadeDistance={100} 
+          fadeStrength={5} 
+          cellSize={1} 
+          sectionSize={5} 
+          sectionColor="#1e293b" 
+          cellColor="#0f172a" 
+        />
         
         {ifcUrl && (
           <IFCModel 
@@ -203,13 +191,12 @@ const Viewer3D = ({ ifcUrl }) => {
             onLoadStart={() => { setLoadingStatus('loading'); setProgressPct(0); }}
             onLoadComplete={() => { setLoadingStatus('success'); setProgressPct(100); }}
             onError={(msg) => { setLoadingStatus('error'); setErrorMessage(msg); }}
-            onRetry={() => setProgressPct(0)}
             onProgress={(p) => setProgressPct(p)}
           />
         )}
         
-        <OrbitControls makeDefault />
-        <Environment preset="city" />
+        <OrbitControls makeDefault minDistance={2} maxDistance={100} />
+        <Environment preset="night" />
       </Canvas>
     </div>
   );
