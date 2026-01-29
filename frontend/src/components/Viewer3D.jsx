@@ -11,19 +11,18 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   useEffect(() => {
     if (!url) return;
 
-    // THE DEFINITIVE FIX FOR 'JA' LINKERROR:
-    // web-ifc-three@0.0.126 depends on web-ifc@^0.0.39.
-    // Version 0.0.36 is the "Golden Version" that works with the 0.0.39 glue code 
-    // and avoids the 'JA' minification error.
-    const wasmUrl = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/';
-    console.log(`[IFC Engine] v2.5 - FORCING STABLE_36: ${wasmUrl}`);
+    // THE DEFINITIVE LOCAL FIX:
+    // We confirmed the file exists in 'frontend/public/web-ifc.wasm'.
+    // We use the absolute origin path to ensure the browser finds it.
+    const wasmPath = window.location.origin + '/';
+    console.log(`[IFC Engine] v2.6 - LOADING LOCAL WASM FROM: ${wasmPath}`);
 
     const loader = new IFCLoader();
-    loader.ifcManager.setWasmPath(wasmUrl);
+    loader.ifcManager.setWasmPath(wasmPath);
     loader.ifcManager.useWebWorkers(false);
 
     onLoadStart();
-    setPhase('INIT_STABLE_ENGINE');
+    setPhase('INIT_LOCAL_ENGINE');
 
     if (modelRef.current) {
       scene.remove(modelRef.current);
@@ -37,13 +36,16 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
         setPhase('SUCCESS');
         onProgress(100);
         
-        // Force bright visibility
-        ifcModel.material.forEach(mat => {
-          mat.side = THREE.DoubleSide;
-          mat.transparent = false;
-          mat.opacity = 1;
-          mat.color.setHex(0xffffff); 
-        });
+        // Ensure visibility with bright standard material
+        if (ifcModel.material) {
+          const materials = Array.isArray(ifcModel.material) ? ifcModel.material : [ifcModel.material];
+          materials.forEach(mat => {
+            mat.side = THREE.DoubleSide;
+            mat.transparent = false;
+            mat.opacity = 1;
+            mat.color.setHex(0xffffff); 
+          });
+        }
         
         modelRef.current = ifcModel;
         scene.add(ifcModel);
@@ -71,7 +73,12 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
       (err) => {
         console.error('[IFC Engine] Error:', err);
         setPhase('ERROR');
-        onError(err.message || 'Engine Crash');
+        
+        let msg = err.message || 'Engine Crash';
+        if (msg.includes('JA') || msg.includes('LinkError')) {
+          msg = "VERSION_MISMATCH (JA): JS code doesn't match WASM. Hard refresh (Ctrl+F5) required.";
+        }
+        onError(msg);
       }
     );
 
