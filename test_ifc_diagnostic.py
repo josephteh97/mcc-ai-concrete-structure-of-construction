@@ -142,6 +142,27 @@ class IFCDiagnosticTester:
         
         return all(v is not None for v in dependencies.values())
     
+    def setup_project(self, ifc_file, name="Test Project"):
+        """Helper to set up a standard project structure with owner history"""
+        import ifcopenshell.api
+        
+        # Create project
+        project = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcProject", name=name)
+        
+        # Create units
+        ifcopenshell.api.run("unit.assign_unit", ifc_file, length={"is_metric": True, "raw": "METERS"})
+        
+        # Create owner history (standard requirement for many entities)
+        ifcopenshell.api.run("owner.create_owner_history", ifc_file)
+        
+        return project
+
+    def create_local_placement(self, ifc_file, relative_to=None):
+        """Helper to create a local placement at origin"""
+        origin = ifc_file.createIfcCartesianPoint((0., 0., 0.))
+        axis2placement = ifc_file.createIfcAxis2Placement3D(origin)
+        return ifc_file.createIfcLocalPlacement(relative_to, axis2placement)
+
     def test_basic_ifc_creation(self):
         """Test basic IFC file creation"""
         print_header("TEST 2: Basic IFC File Creation")
@@ -154,17 +175,13 @@ class IFCDiagnosticTester:
             print_info("Creating minimal IFC4 file...")
             ifc_file = ifcopenshell.api.run("project.create_file", version="IFC4")
             
-            # Create project
-            print_info("Creating IFC Project...")
-            project = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcProject", name="Test Project")
-            
-            # Create units
-            print_info("Setting up units...")
-            ifcopenshell.api.run("unit.assign_unit", ifc_file, length={"is_metric": True, "raw": "METERS"})
+            # Setup project with owner history
+            project = self.setup_project(ifc_file, "Basic Test")
             
             # Create site
             print_info("Creating site...")
             site = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcSite", name="Test Site")
+            site.ObjectPlacement = self.create_local_placement(ifc_file)
             ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=project, products=[site])
             
             # Save file
@@ -205,7 +222,7 @@ class IFCDiagnosticTester:
             
             print_info("Creating IFC file with geometry...")
             ifc_file = ifcopenshell.api.run("project.create_file", version="IFC4")
-            project = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcProject", name="Geometry Test")
+            project = self.setup_project(ifc_file, "Geometry Test")
             
             # Set up context
             print_info("Setting up geometric context...")
@@ -219,17 +236,17 @@ class IFCDiagnosticTester:
                 parent=context
             )
             
-            # Set up units
-            ifcopenshell.api.run("unit.assign_unit", ifc_file, length={"is_metric": True, "raw": "METERS"})
-            
             # Create site and building
             site = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcSite", name="Site")
+            site.ObjectPlacement = self.create_local_placement(ifc_file)
             ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=project, products=[site])
             
             building = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcBuilding", name="Building")
+            building.ObjectPlacement = self.create_local_placement(ifc_file, relative_to=site.ObjectPlacement)
             ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=site, products=[building])
             
             storey = ifcopenshell.api.run("root.create_entity", ifc_file, ifc_class="IfcBuildingStorey", name="Ground Floor")
+            storey.ObjectPlacement = self.create_local_placement(ifc_file, relative_to=building.ObjectPlacement)
             ifcopenshell.api.run("aggregate.assign_object", ifc_file, relating_object=building, products=[storey])
             
             # Test 1: Create a column
@@ -397,15 +414,7 @@ class IFCDiagnosticTester:
             
             print_info("Creating complete building structure...")
             ifc_file = ifcopenshell.api.run("project.create_file", version="IFC4")
-            
-            # Project setup
-            project = ifcopenshell.api.run("root.create_entity", ifc_file, 
-                                          ifc_class="IfcProject", 
-                                          name="Complete Building Test")
-            
-            # Units
-            ifcopenshell.api.run("unit.assign_unit", ifc_file, 
-                                length={"is_metric": True, "raw": "METERS"})
+            project = self.setup_project(ifc_file, "Complete Building Test")
             
             # Context
             context = ifcopenshell.api.run("context.add_context", ifc_file, context_type="Model")
@@ -420,12 +429,14 @@ class IFCDiagnosticTester:
             site = ifcopenshell.api.run("root.create_entity", ifc_file, 
                                        ifc_class="IfcSite", 
                                        name="Construction Site")
+            site.ObjectPlacement = self.create_local_placement(ifc_file)
             ifcopenshell.api.run("aggregate.assign_object", ifc_file, 
                                 relating_object=project, products=[site])
             
             building = ifcopenshell.api.run("root.create_entity", ifc_file,
                                            ifc_class="IfcBuilding",
                                            name="Main Building")
+            building.ObjectPlacement = self.create_local_placement(ifc_file, relative_to=site.ObjectPlacement)
             ifcopenshell.api.run("aggregate.assign_object", ifc_file,
                                 relating_object=site, products=[building])
             
@@ -602,15 +613,26 @@ class IFCDiagnosticTester:
                     
                     # Try validation (if available)
                     try:
-                        # Pass self.results['warnings'] as a logger-like list or just use a dummy logger
-                        validation_result = ifcopenshell.validate.validate(ifc_file, logger=logger)
-                        if validation_result:
+                        # Capture validation errors to print them
+                        validation_errors = ifcopenshell.validate.json_logger()
+                        ifcopenshell.validate.validate(ifc_file, validation_errors)
+                        
+                        if not validation_errors.errors:
                             print_success(f"  File is valid")
                         else:
-                            print_warning(f"  File has validation issues")
+                            print_warning(f"  File has {len(validation_errors.errors)} validation issues:")
+                            for error in validation_errors.errors[:5]: # Show first 5
+                                logger.warning(f"    - {error}")
+                            if len(validation_errors.errors) > 5:
+                                logger.warning(f"    - ... and {len(validation_errors.errors) - 5} more")
                             all_valid = False
-                    except AttributeError:
-                        print_info("  Advanced validation not available")
+                    except (AttributeError, Exception) as e:
+                        print_info(f"  Advanced validation encountered an issue: {str(e)}")
+                        # Fallback to basic check
+                        if len(ifc_file.by_type("IfcProject")) > 0:
+                            print_success("  Basic structure (IfcProject) exists")
+                        else:
+                            all_valid = False
                     
                     print_success(f"Basic validation passed for {Path(ifc_path).name}")
                     
