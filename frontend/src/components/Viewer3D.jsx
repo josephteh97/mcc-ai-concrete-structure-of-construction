@@ -11,12 +11,15 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   useEffect(() => {
     if (!url) return;
 
-    // Use 0.0.36 - the most robust version that usually avoids Ja/Ja LinkErrors
-    const wasmUrl = 'https://unpkg.com/web-ifc@0.0.36/';
-    console.log(`[IFC Viewer] Loading with STABLE WASM: ${wasmUrl}`);
+    // To fix LinkError 'ja'/'ja': We MUST match the exact version in package.json (0.0.47)
+    // and we MUST ensure the path is absolute and ends with a slash.
+    const wasmUrl = 'https://unpkg.com/web-ifc@0.0.47/';
+    console.log(`[IFC Viewer] Loading with EXACT package version: ${wasmUrl}`);
 
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath(wasmUrl);
+    
+    // IMPORTANT: Disable web workers if hitting LinkErrors, as workers often load different versions
     loader.ifcManager.useWebWorkers(false);
 
     onLoadStart();
@@ -27,11 +30,9 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
       modelRef.current = null;
     }
 
-    // Use standard load with better phase tracking
     loader.load(
       url,
       (ifcModel) => {
-        console.log('[IFC Viewer] Parse Success');
         setPhase('SUCCESS');
         onProgress(100);
         
@@ -42,7 +43,7 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = maxDim * 2.5 || 25;
+        const distance = maxDim * 3 || 30;
 
         camera.position.set(center.x + distance, center.y + distance, center.z + distance);
         camera.lookAt(center);
@@ -54,19 +55,14 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
         if (xhr.lengthComputable) {
           const percent = Math.floor((xhr.loaded / xhr.total) * 100);
           onProgress(percent);
-          if (percent === 100) {
-            setPhase('PARSING');
-          } else if (percent > 0) {
-            setPhase('FETCHING');
-          }
-        } else {
-          setPhase('FETCHING');
+          if (percent === 100) setPhase('PARSING');
+          else setPhase('FETCHING');
         }
       },
       (error) => {
         console.error('[IFC Viewer] Error:', error);
         setPhase('ERROR');
-        onError(error.message || 'Error loading IFC model');
+        onError(error.message || 'Engine LinkError');
       }
     );
 
@@ -85,69 +81,67 @@ const Viewer3D = ({ ifcUrl }) => {
   const [progressPct, setProgressPct] = useState(0);
 
   return (
-    <div className="w-full h-full bg-[#0a0a0f] relative overflow-hidden">
-      {/* HUD Overlay */}
-      <div className="absolute top-4 left-4 z-30 font-mono text-[10px] space-y-1 pointer-events-none">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${loadingStatus === 'loading' ? 'bg-blue-500 animate-pulse' : 'bg-green-500'}`}></div>
-          <span className="text-blue-400 font-bold tracking-widest uppercase">IFC_ENGINE_CORE_v1.5</span>
+    <div className="w-full h-full bg-[#050505] relative overflow-hidden">
+      {/* High-Visibility HUD */}
+      <div className="absolute top-6 left-6 z-30 font-mono text-xs space-y-2 pointer-events-none">
+        <div className="flex items-center gap-3">
+          <div className={`w-3 h-3 rounded-full ${loadingStatus === 'loading' ? 'bg-blue-500 animate-pulse' : 'bg-green-500 shadow-[0_0_10px_#22c55e]'}`}></div>
+          <span className="text-white font-black tracking-tighter text-sm uppercase">SYSTEM_CORE_V1.6</span>
         </div>
-        <div className="text-slate-500">SYSTEM_PHASE: <span className="text-blue-200">{phase}</span></div>
-        <div className="text-slate-500">DATA_FLOW: <span className="text-blue-200">{progressPct}%</span></div>
+        <div className="flex gap-4">
+          <div className="text-blue-500/50">PHASE: <span className="text-blue-400">{phase}</span></div>
+          <div className="text-blue-500/50">LOAD: <span className="text-blue-400">{progressPct}%</span></div>
+        </div>
       </div>
 
       {loadingStatus === 'loading' && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
           <div className="relative">
-            {/* The "Flashing Blue Light" Pulse Effect */}
-            <div className="absolute inset-0 w-24 h-24 bg-blue-500/20 rounded-full animate-ping"></div>
-            <div className="relative w-24 h-24 flex items-center justify-center border-4 border-blue-500/30 rounded-full">
-              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="absolute inset-[-20px] bg-blue-600/20 rounded-full animate-pulse blur-xl"></div>
+            <div className="w-24 h-24 border-t-4 border-blue-500 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center text-white font-black text-xl">
+              {progressPct}%
             </div>
           </div>
-          <div className="mt-8 flex flex-col items-center gap-1">
-            <div className="text-blue-400 font-mono text-sm tracking-[0.3em] uppercase animate-pulse">{phase}</div>
-            <div className="text-white font-black text-4xl">{progressPct}%</div>
-          </div>
+          <div className="mt-10 text-blue-400 font-mono tracking-[0.5em] animate-pulse text-sm">INITIALIZING_3D_GRID</div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-950/20 backdrop-blur-md p-6">
-          <div className="bg-black/80 border border-red-500/50 p-8 rounded-lg max-w-md w-full flex flex-col items-center gap-6">
-            <div className="text-red-500 text-5xl">⚠</div>
-            <div className="text-center">
-              <h3 className="text-white font-bold text-xl mb-2">CRITICAL_SYSTEM_ERROR</h3>
-              <p className="text-red-400 text-sm font-mono">{errorMessage}</p>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-red-950/40 backdrop-blur-xl">
+          <div className="bg-black border-2 border-red-600 p-10 rounded-none shadow-[0_0_50px_rgba(220,38,38,0.3)] max-w-md w-full">
+            <h2 className="text-red-600 font-black text-2xl mb-4 tracking-tighter italic">CORE_DUMP_DETECTED</h2>
+            <div className="bg-red-600/10 p-4 font-mono text-[10px] text-red-400 border border-red-600/20 mb-8 uppercase leading-relaxed">
+              {errorMessage}
             </div>
             <button 
               onClick={() => window.location.reload()} 
-              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md transition-all active:scale-95"
+              className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black text-sm tracking-widest transition-all"
             >
-              REBOOT_ENGINE
+              RELOAD_SYSTEM_INSTANCE
             </button>
           </div>
         </div>
       )}
 
-      <Canvas camera={{ position: [30, 30, 30], fov: 45 }}>
-        <color attach="background" args={['#0a0a0f']} />
+      <Canvas camera={{ position: [40, 40, 40], fov: 45 }}>
+        <color attach="background" args={['#050505']} />
         
-        <ambientLight intensity={0.8} />
-        <pointLight position={[20, 20, 20]} intensity={1.5} />
-        <spotLight position={[-20, 50, 20]} angle={0.2} intensity={2} penumbra={1} castShadow />
+        <ambientLight intensity={1} />
+        <pointLight position={[50, 50, 50]} intensity={2} />
+        <spotLight position={[-50, 100, 50]} angle={0.3} intensity={3} penumbra={1} castShadow />
         
-        {/* Bright, High-Aesthetic Indigo Grid */}
+        {/* ULTRA-AESTHETIC HIGH-VISIBILITY GRID */}
         <Grid 
           infiniteGrid 
-          fadeDistance={250} 
-          fadeStrength={1}    
+          fadeDistance={500} 
+          fadeStrength={0.5}    
           cellSize={1} 
           sectionSize={5} 
-          sectionThickness={2}
-          sectionColor="#4f46e5" 
-          cellColor="#1e1b4b"    
-          cellThickness={1}
+          sectionThickness={2.5}
+          sectionColor="#3b82f6" // Electric Blue
+          cellColor="#1e3a8a"    // Deep Navy
+          cellThickness={1.2}
         />
         
         {ifcUrl && (
@@ -161,7 +155,7 @@ const Viewer3D = ({ ifcUrl }) => {
           />
         )}
         
-        <OrbitControls makeDefault minDistance={2} maxDistance={500} />
+        <OrbitControls makeDefault minDistance={5} maxDistance={1000} />
         <Environment preset="city" />
       </Canvas>
     </div>
