@@ -475,6 +475,14 @@ class IFCDiagnosticTester:
                         )
                         column.ObjectPlacement = placement
                         column_count += 1
+                        
+                        # Add geometry representation
+                        profile = ifc_file.createIfcRectangleProfileDef("AREA", None, None, 0.3, 0.3)
+                        direction = ifc_file.createIfcDirection((0., 0., 1.))
+                        extrusion = ifc_file.createIfcExtrudedAreaSolid(profile, None, direction, 3.5)
+                        representation = ifc_file.createIfcShapeRepresentation(body, "Body", "SweptSolid", [extrusion])
+                        product_shape = ifc_file.createIfcProductDefinitionShape(None, None, [representation])
+                        column.Representation = product_shape
             
             print_success(f"Created {column_count} columns")
             
@@ -594,7 +602,8 @@ class IFCDiagnosticTester:
                     
                     # Try validation (if available)
                     try:
-                        validation_result = ifcopenshell.validate.validate(ifc_file)
+                        # Pass self.results['warnings'] as a logger-like list or just use a dummy logger
+                        validation_result = ifcopenshell.validate.validate(ifc_file, logger=logger)
                         if validation_result:
                             print_success(f"  File is valid")
                         else:
