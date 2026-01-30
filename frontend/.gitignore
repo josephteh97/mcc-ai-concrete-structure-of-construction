@@ -1,0 +1,13 @@
+# Dependencies
+node_modules
+node_modules.backup.*
+
+# Build
+dist
+*.local
+
+# Logs
+*.log
+
+# OS
+.DS_Store
