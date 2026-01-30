@@ -1,5 +1,6 @@
-import Node from './Node.js';
+import Node, { addNodeClass } from './Node.js';
 import NodeCache from './NodeCache.js';
+import { addNodeElement, nodeProxy } from '../shadernode/ShaderNode.js';
 
 class CacheNode extends Node {
 
@@ -23,8 +24,9 @@ class CacheNode extends Node {
 	build( builder, ...params ) {
 
 		const previousCache = builder.getCache();
+		const cache = this.cache || builder.globalCache;
 
-		builder.setCache( this.cache );
+		builder.setCache( cache );
 
 		const data = this.node.build( builder, ...params );
 
@@ -37,3 +39,11 @@ class CacheNode extends Node {
 }
 
 export default CacheNode;
+
+export const cache = nodeProxy( CacheNode );
+export const globalCache = ( node ) => cache( node, null );
+
+addNodeElement( 'cache', cache );
+addNodeElement( 'globalCache', globalCache );
+
+addNodeClass( 'CacheNode', CacheNode );

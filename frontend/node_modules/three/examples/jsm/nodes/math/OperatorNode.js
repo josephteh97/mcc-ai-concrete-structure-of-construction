@@ -1,4 +1,6 @@
 import TempNode from '../core/TempNode.js';
+import { addNodeClass } from '../core/Node.js';
+import { addNodeElement, nodeProxy } from '../shadernode/ShaderNode.js';
 
 class OperatorNode extends TempNode {
 
@@ -27,12 +29,6 @@ class OperatorNode extends TempNode {
 
 	}
 
-	hasDependencies( builder ) {
-
-		return this.op !== '=' ? super.hasDependencies( builder ) : false;
-
-	}
-
 	getNodeType( builder, output ) {
 
 		const op = this.op;
@@ -47,7 +43,7 @@ class OperatorNode extends TempNode {
 
 			return 'void';
 
-		} else if ( op === '=' || op === '%' ) {
+		} else if ( op === '%' ) {
 
 			return typeA;
 
@@ -61,7 +57,7 @@ class OperatorNode extends TempNode {
 
 		} else if ( op === '<' || op === '>' || op === '<=' || op === '>=' ) {
 
-			const typeLength = builder.getTypeLength( output );
+			const typeLength = output ? builder.getTypeLength( output ) : Math.max( builder.getTypeLength( typeA ), builder.getTypeLength( typeB ) );
 
 			return typeLength > 1 ? `bvec${ typeLength }` : 'bool';
 
@@ -114,11 +110,7 @@ class OperatorNode extends TempNode {
 			typeA = aNode.getNodeType( builder );
 			typeB = bNode.getNodeType( builder );
 
-			if ( op === '=' ) {
-
-				typeB = typeA;
-
-			} else if ( op === '<' || op === '>' || op === '<=' || op === '>=' ) {
+			if ( op === '<' || op === '>' || op === '<=' || op === '>=' || op === '==' ) {
 
 				if ( builder.isVector( typeA ) ) {
 
@@ -165,40 +157,47 @@ class OperatorNode extends TempNode {
 		const b = bNode.build( builder, typeB );
 
 		const outputLength = builder.getTypeLength( output );
+		const fnOpSnippet = builder.getFunctionOperator( op );
 
 		if ( output !== 'void' ) {
 
-			if ( op === '=' ) {
+			if ( op === '<' && outputLength > 1 ) {
 
-				builder.addFlowCode( `${a} ${this.op} ${b}` );
-
-				return a;
-
-			} else if ( op === '<' && outputLength > 1 ) {
-
-				return builder.format( `${ builder.getMethod( 'lessThan' ) }( ${a}, ${b} )`, type, output );
+				return builder.format( `${ builder.getMethod( 'lessThan' ) }( ${ a }, ${ b } )`, type, output );
 
 			} else if ( op === '<=' && outputLength > 1 ) {
 
-				return builder.format( `${ builder.getMethod( 'lessThanEqual' ) }( ${a}, ${b} )`, type, output );
+				return builder.format( `${ builder.getMethod( 'lessThanEqual' ) }( ${ a }, ${ b } )`, type, output );
 
 			} else if ( op === '>' && outputLength > 1 ) {
 
-				return builder.format( `${ builder.getMethod( 'greaterThan' ) }( ${a}, ${b} )`, type, output );
+				return builder.format( `${ builder.getMethod( 'greaterThan' ) }( ${ a }, ${ b } )`, type, output );
 
 			} else if ( op === '>=' && outputLength > 1 ) {
 
-				return builder.format( `${ builder.getMethod( 'greaterThanEqual' ) }( ${a}, ${b} )`, type, output );
+				return builder.format( `${ builder.getMethod( 'greaterThanEqual' ) }( ${ a }, ${ b } )`, type, output );
+
+			} else if ( fnOpSnippet ) {
+
+				return builder.format( `${ fnOpSnippet }( ${ a }, ${ b } )`, type, output );
 
 			} else {
 
-				return builder.format( `( ${a} ${this.op} ${b} )`, type, output );
+				return builder.format( `( ${ a } ${ op } ${ b } )`, type, output );
 
 			}
 
 		} else if ( typeA !== 'void' ) {
 
-			return builder.format( `${a} ${this.op} ${b}`, type, output );
+			if ( fnOpSnippet ) {
+
+				return builder.format( `${ fnOpSnippet }( ${ a }, ${ b } )`, type, output );
+
+			} else {
+
+				return builder.format( `${ a } ${ op } ${ b }`, type, output );
+
+			}
 
 		}
 
@@ -223,3 +222,45 @@ class OperatorNode extends TempNode {
 }
 
 export default OperatorNode;
+
+export const add = nodeProxy( OperatorNode, '+' );
+export const sub = nodeProxy( OperatorNode, '-' );
+export const mul = nodeProxy( OperatorNode, '*' );
+export const div = nodeProxy( OperatorNode, '/' );
+export const remainder = nodeProxy( OperatorNode, '%' );
+export const equal = nodeProxy( OperatorNode, '==' );
+export const notEqual = nodeProxy( OperatorNode, '!=' );
+export const lessThan = nodeProxy( OperatorNode, '<' );
+export const greaterThan = nodeProxy( OperatorNode, '>' );
+export const lessThanEqual = nodeProxy( OperatorNode, '<=' );
+export const greaterThanEqual = nodeProxy( OperatorNode, '>=' );
+export const and = nodeProxy( OperatorNode, '&&' );
+export const or = nodeProxy( OperatorNode, '||' );
+export const xor = nodeProxy( OperatorNode, '^^' );
+export const bitAnd = nodeProxy( OperatorNode, '&' );
+export const bitOr = nodeProxy( OperatorNode, '|' );
+export const bitXor = nodeProxy( OperatorNode, '^' );
+export const shiftLeft = nodeProxy( OperatorNode, '<<' );
+export const shiftRight = nodeProxy( OperatorNode, '>>' );
+
+addNodeElement( 'add', add );
+addNodeElement( 'sub', sub );
+addNodeElement( 'mul', mul );
+addNodeElement( 'div', div );
+addNodeElement( 'remainder', remainder );
+addNodeElement( 'equal', equal );
+addNodeElement( 'notEqual', notEqual );
+addNodeElement( 'lessThan', lessThan );
+addNodeElement( 'greaterThan', greaterThan );
+addNodeElement( 'lessThanEqual', lessThanEqual );
+addNodeElement( 'greaterThanEqual', greaterThanEqual );
+addNodeElement( 'and', and );
+addNodeElement( 'or', or );
+addNodeElement( 'xor', xor );
+addNodeElement( 'bitAnd', bitAnd );
+addNodeElement( 'bitOr', bitOr );
+addNodeElement( 'bitXor', bitXor );
+addNodeElement( 'shiftLeft', shiftLeft );
+addNodeElement( 'shiftRight', shiftRight );
+
+addNodeClass( 'OperatorNode', OperatorNode );
