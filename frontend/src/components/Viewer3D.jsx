@@ -18,7 +18,8 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
     console.log(`[IFC Engine] v2.6 - LOADING LOCAL WASM FROM: ${wasmPath}`);
 
     const loader = new IFCLoader();
-    loader.ifcManager.setWasmPath(wasmPath);
+    // loader.ifcManager.setWasmPath(wasmPath);
+    loader.ifcManager.setWasmPath('/');    // set path to WASM files
     loader.ifcManager.useWebWorkers(false);
 
     onLoadStart();
