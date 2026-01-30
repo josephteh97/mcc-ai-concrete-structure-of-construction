@@ -28,5 +28,5 @@ lark==1.1.9
 roboflow==1.2.12
 PyMuPDF==1.20.2
 
-# Note: ifcopenshell must be installed via conda
+# Note: ifcopenshell removed
 # conda install -c conda-forge ifcopenshell
