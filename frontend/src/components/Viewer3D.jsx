@@ -11,15 +11,15 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
   useEffect(() => {
     if (!url) return;
 
-    console.log('[IFC] Loading from:', url);
+    console.log('[IFC] Starting load...');
     
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath('/');
     
-    // Version 0.0.46 properly respects this setting
+    // Let workers load if they exist, disable if needed
     loader.ifcManager.useWebWorkers(false);
     
-    console.log('[IFC] Workers disabled, WASM path set');
+    console.log('[IFC] Configuration complete');
 
     onLoadStart();
     setPhase('LOADING');
@@ -30,30 +30,38 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
     }
 
     const timeout = setTimeout(() => {
-      console.error('[IFC] Timeout');
+      console.error('[IFC] Timeout after 2 minutes');
       onError('Loading timeout');
       setPhase('ERROR');
     }, 120000);
+
+    console.log('[IFC] Loading:', url);
 
     loader.load(
       url,
       (ifcModel) => {
         clearTimeout(timeout);
-        console.log('[IFC] ✓ Loaded');
+        console.log('[IFC] ✓ LOADED SUCCESSFULLY');
         
         setPhase('SUCCESS');
         onProgress(100);
         
+        let meshCount = 0;
         ifcModel.traverse((child) => {
-          if (child.isMesh && child.material) {
-            const mats = Array.isArray(child.material) ? child.material : [child.material];
-            mats.forEach(m => {
-              m.side = THREE.DoubleSide;
-              m.transparent = false;
-              m.opacity = 1;
-            });
+          if (child.isMesh) {
+            meshCount++;
+            if (child.material) {
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach(m => {
+                m.side = THREE.DoubleSide;
+                m.transparent = false;
+                m.opacity = 1;
+              });
+            }
           }
         });
+        
+        console.log('[IFC] Processed', meshCount, 'meshes');
         
         modelRef.current = ifcModel;
         scene.add(ifcModel);
@@ -63,10 +71,14 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
           const center = box.getCenter(new THREE.Vector3());
           const size = box.getSize(new THREE.Vector3());
           const dist = Math.max(size.x, size.y, size.z) * 2.5 || 50;
+          
           camera.position.set(center.x + dist, center.y + dist, center.z + dist);
           camera.lookAt(center);
+          camera.updateProjectionMatrix();
+          
+          console.log('[IFC] Camera positioned');
         } catch (e) {
-          console.warn('[IFC] Camera positioning failed:', e);
+          console.warn('[IFC] Camera positioning failed');
         }
 
         onLoadComplete();
@@ -74,16 +86,16 @@ const IFCModel = ({ url, onLoadStart, onLoadComplete, onError, onProgress, setPh
       (xhr) => {
         if (xhr.lengthComputable) {
           const p = Math.floor((xhr.loaded / xhr.total) * 100);
-          console.log(`[IFC] ${p}%`);
+          if (p % 10 === 0) console.log(`[IFC] ${p}%`);
           onProgress(p);
           setPhase(p === 100 ? 'PROCESSING' : 'LOADING');
         }
       },
       (err) => {
         clearTimeout(timeout);
-        console.error('[IFC] Error:', err);
+        console.error('[IFC] LOAD ERROR:', err);
         setPhase('ERROR');
-        onError(err.message || 'Load failed');
+        onError(err.message || 'Failed to load IFC file');
       }
     );
 
@@ -111,7 +123,7 @@ const Viewer3D = ({ ifcUrl }) => {
             loadingStatus === 'success' ? 'bg-green-400' : 
             loadingStatus === 'error' ? 'bg-red-400' : 'bg-gray-400'
           }`}></div>
-          <span>IFC Viewer v0.0.46</span>
+          <span>IFC Viewer</span>
         </div>
         <div className="text-white/50">{phase} - {progressPct}%</div>
       </div>
@@ -119,15 +131,16 @@ const Viewer3D = ({ ifcUrl }) => {
       {loadingStatus === 'loading' && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/90">
           <div className="w-12 h-12 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-          <div className="mt-4 text-white text-sm">{phase} - {progressPct}%</div>
+          <div className="mt-4 text-white text-sm">{phase}</div>
+          <div className="text-white/50 text-xs">{progressPct}%</div>
         </div>
       )}
 
       {loadingStatus === 'error' && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black p-8">
           <div className="max-w-md border border-red-500 p-6 bg-black">
-            <h2 className="text-red-500 text-lg font-bold mb-4">Error</h2>
-            <p className="text-red-400 text-sm mb-4">{errorMessage}</p>
+            <h2 className="text-red-500 text-lg font-bold mb-4">Load Error</h2>
+            <p className="text-red-400 text-sm mb-4 break-words">{errorMessage}</p>
             <button 
               onClick={() => window.location.reload()} 
               className="w-full py-2 bg-red-600 hover:bg-red-700 text-white"
