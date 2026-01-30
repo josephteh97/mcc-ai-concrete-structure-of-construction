@@ -1,5 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pathlib import Path
 import shutil
 import os
 import uuid
@@ -10,6 +12,7 @@ from processing_unit.vision_model import VisionReasoner
 from processing_unit.system_manager import SystemManager
 from pydantic import BaseModel
 from generating_unit.ifc_generator import IfcGenerator
+from ifc_to_gltf_converter import ifc_to_gltf
 
 app = FastAPI(title="MCC AI Construction System")
 
@@ -28,6 +31,32 @@ vision_reasoner = VisionReasoner() # It internally uses SystemManager
 
 class ChatRequest(BaseModel):
     message: str
+
+UPLOAD_DIR = Path("uploads")
+GLTF_DIR = Path("gltf_output")
+UPLOAD_DIR.mkdir(exist_ok=True)
+GLTF_DIR.mkdir(exist_ok=True)
+
+@app.post("/api/upload-ifc")
+async def upload_ifc(file: UploadFile):
+    file_id = str(uuid.uuid4())
+    ifc_path = UPLOAD_DIR / f"{file_id}.ifc"
+    with open(ifc_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    return {"file_id": file_id}
+
+@app.post("/api/convert-to-gltf")
+async def convert_to_gltf(request: dict):
+    file_id = request['file_id']
+    ifc_path = UPLOAD_DIR / f"{file_id}.ifc"
+    gltf_path = GLTF_DIR / f"{file_id}.glb"
+    
+    stats = ifc_to_gltf(str(ifc_path), str(gltf_path))
+    return {"gltf_url": f"/api/models/{file_id}.glb", "stats": stats}
+
+@app.get("/api/models/{filename}")
+async def get_model(filename: str):
+    return FileResponse(GLTF_DIR / filename, media_type="model/gltf-binary")
 
 @app.get("/")
 def read_root():
