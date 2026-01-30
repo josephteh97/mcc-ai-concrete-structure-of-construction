@@ -42,9 +42,9 @@ class IfcGenerator:
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0]
         ]
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[self.site], matrix=identity_matrix)
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[self.building], matrix=identity_matrix)
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[self.storey], matrix=identity_matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=self.site, matrix=identity_matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=self.building, matrix=identity_matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=self.storey, matrix=identity_matrix)
 
         # Assign hierarchy
         ifcopenshell.api.run("aggregate.assign_object", self.model, relating_object=self.project, products=[self.site])
@@ -84,10 +84,10 @@ class IfcGenerator:
             [0.0, 0.0, 0.0, 1.0]
         ]
         
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[column], matrix=matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=column, matrix=matrix)
         
         # Assign material
-        ifcopenshell.api.run("material.assign_material", self.model, products=[column], material=self.material)
+        ifcopenshell.api.run("material.assign_material", self.model, products=column, material=self.material)
         
         # Assign to storey
         ifcopenshell.api.run("spatial.assign_container", self.model, relating_structure=self.storey, products=[column])
@@ -140,7 +140,7 @@ class IfcGenerator:
             [0.0,    0.0,   0.0, 1.0]
         ]
         
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[beam], matrix=matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=beam, matrix=matrix)
         
         # Assign material
         ifcopenshell.api.run("material.assign_material", self.model, products=[beam], material=self.material)
@@ -168,7 +168,7 @@ class IfcGenerator:
             [0.0, 0.0, 0.0, 1.0]
         ]
         
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[slab], matrix=matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=slab, matrix=matrix)
         
         # Assign material
         ifcopenshell.api.run("material.assign_material", self.model, products=[slab], material=self.material)
@@ -220,7 +220,7 @@ class IfcGenerator:
             [0.0, 0.0, 0.0, 1.0]
         ]
         
-        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=[element], matrix=matrix)
+        ifcopenshell.api.run("geometry.edit_object_placement", self.model, products=element, matrix=matrix)
         
         # Assign material
         ifcopenshell.api.run("material.assign_material", self.model, products=[element], material=self.material)
