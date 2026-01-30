@@ -1,0 +1,11 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition[DesignTransferView]'),'2;1');
+FILE_NAME('/dev/null','2026-01-30T11:14:39+08:00',(''),(''),'IfcOpenShell 0.8.4','IfcOpenShell 0.8.4','Nobody');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0pi72U_dnF0POO5$xja5No',$,'Test',$,$,$,$,$,$);
+#2=IFCSITE('1MROc8Vsb7KuEmyyGLZN9$',$,'Site',$,$,$,$,$,$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
